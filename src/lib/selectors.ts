@@ -143,11 +143,9 @@ export interface StaffMonthStats {
   staffId: string
   present: number
   absent: number
-  leave: number
-  half: number
   marked: number
   workingDays: number
-  /** Present + half-days count as attendance credit. */
+  /** Share of marked working days actually attended. */
   consistency: number
 }
 
@@ -160,22 +158,17 @@ export function staffMonthStats(
   const map = attendanceMap(data.attendance)
   let present = 0
   let absent = 0
-  let leave = 0
-  let half = 0
   for (const d of days) {
     const st = map.get(`${staffId}__${d}`)
     if (st === 'present') present++
     else if (st === 'absent') absent++
-    else if (st === 'leave') leave++
-    else if (st === 'half') half++
   }
-  const marked = present + absent + leave + half
-  const credit = present + half * 0.5
+  const marked = present + absent
   return {
     staffId,
-    present, absent, leave, half, marked,
+    present, absent, marked,
     workingDays: days.length,
-    consistency: marked > 0 ? (credit / marked) * 100 : 0,
+    consistency: marked > 0 ? (present / marked) * 100 : 0,
   }
 }
 
@@ -183,25 +176,23 @@ export function staffMonthStats(
 export function staffTrend(data: AppData, staffId: string, n = 6) {
   return lastMonths(n).map((key) => {
     const s = staffMonthStats(data, staffId, key)
-    return { key, value: s.consistency, marked: s.marked, leave: s.leave, absent: s.absent }
+    return { key, value: s.consistency, marked: s.marked, absent: s.absent }
   })
 }
 
 /** All-time consistency, used for the "historically" view. */
 export function staffLifetime(data: AppData, staffId: string) {
   const recs = data.attendance.filter((r) => r.staffId === staffId)
-  let present = 0, absent = 0, leave = 0, half = 0
+  let present = 0
+  let absent = 0
   for (const r of recs) {
     if (r.status === 'present') present++
     else if (r.status === 'absent') absent++
-    else if (r.status === 'leave') leave++
-    else half++
   }
-  const marked = recs.length
-  const credit = present + half * 0.5
+  const marked = present + absent
   return {
-    present, absent, leave, half, marked,
-    consistency: marked > 0 ? (credit / marked) * 100 : 0,
+    present, absent, marked,
+    consistency: marked > 0 ? (present / marked) * 100 : 0,
   }
 }
 

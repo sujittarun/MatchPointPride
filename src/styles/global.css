@@ -37,6 +37,10 @@ body {
   font-size: 15px;
   line-height: 1.5;
   overscroll-behavior-y: none;
+  /* A long unbroken string (a pasted name, a run-on batch title) must wrap
+     rather than push the page wider than the phone. `anywhere` also shrinks
+     min-content width, which is what keeps flex/grid children in line. */
+  overflow-wrap: anywhere;
 }
 
 h1,
@@ -244,6 +248,9 @@ ul {
   font-size: 0.7rem;
   color: var(--ink-muted);
   margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .brandmark {
@@ -460,6 +467,8 @@ ul {
   line-height: 1;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* keep a large figure on one line — clip it, never wrap mid-number */
+  white-space: nowrap;
 }
 
 .stat__foot {
@@ -1059,6 +1068,8 @@ ul {
   gap: 6px;
   font-size: 0.76rem;
   color: var(--ink-secondary);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .legend-swatch {

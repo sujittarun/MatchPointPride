@@ -37,8 +37,6 @@ import {
 
 const STATUSES: Array<{ value: AttendanceStatus; label: string }> = [
   { value: 'present', label: 'Present' },
-  { value: 'half', label: 'Half day' },
-  { value: 'leave', label: 'Leave' },
   { value: 'absent', label: 'Absent' },
 ]
 
@@ -167,21 +165,15 @@ export default function StaffDetail({ id }: { id: string }) {
               </span>
             </div>
             <div className="row-between">
-              <span className="t-sub">Half days</span>
-              <span className="num" style={{ fontWeight: 640 }}>
-                {stats.half}
-              </span>
-            </div>
-            <div className="row-between">
-              <span className="t-sub">Leaves</span>
-              <span className="num" style={{ fontWeight: 640, color: '#8bbcf3' }}>
-                {stats.leave}
-              </span>
-            </div>
-            <div className="row-between">
               <span className="t-sub">Absent</span>
               <span className="num" style={{ fontWeight: 640, color: '#ff8f8f' }}>
                 {stats.absent}
+              </span>
+            </div>
+            <div className="row-between">
+              <span className="t-sub">Marked</span>
+              <span className="num" style={{ fontWeight: 640 }}>
+                {stats.marked} / {stats.workingDays}
               </span>
             </div>
           </div>
@@ -190,14 +182,12 @@ export default function StaffDetail({ id }: { id: string }) {
           <ShareBar
             parts={[
               { label: 'Present', value: stats.present, color: ATT_COLOR.present },
-              { label: 'Half', value: stats.half, color: ATT_COLOR.half },
-              { label: 'Leave', value: stats.leave, color: ATT_COLOR.leave },
               { label: 'Absent', value: stats.absent, color: ATT_COLOR.absent },
             ]}
           />
           <div className="t-mut" style={{ marginTop: 7 }}>
-            {stats.marked} of {stats.workingDays} working days marked. Half days count as half
-            attendance; Sundays are excluded.
+            {stats.marked} of {stats.workingDays} working days marked. Consistency is measured
+            against days actually marked; Sundays are excluded.
           </div>
         </div>
       </div>
@@ -239,17 +229,15 @@ export default function StaffDetail({ id }: { id: string }) {
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card__head">
           <div>
-            <div className="card__title">Leaves &amp; absences</div>
+            <div className="card__title">Days absent</div>
             <div className="card__sub">Last 6 months</div>
           </div>
         </div>
         <BarChart
-          data={trend.map((t) => ({ label: monthShort(t.key), leave: t.leave, absent: t.absent }))}
-          series={[
-            { key: 'leave', label: 'Leave', color: ATT_COLOR.leave },
-            { key: 'absent', label: 'Absent', color: ATT_COLOR.absent },
-          ]}
+          data={trend.map((t) => ({ label: monthShort(t.key), absent: t.absent }))}
+          series={[{ key: 'absent', label: 'Absent', color: ATT_COLOR.absent }]}
           format={(n) => `${n} day${n === 1 ? '' : 's'}`}
+          valueLabels
         />
       </div>
 
@@ -261,10 +249,10 @@ export default function StaffDetail({ id }: { id: string }) {
           accent="var(--good)"
         />
         <Stat
-          label="Lifetime leaves"
-          value={String(lifetime.leave)}
-          foot={`${lifetime.absent} absences`}
-          accent="var(--series-1)"
+          label="Lifetime absences"
+          value={String(lifetime.absent)}
+          foot={`${lifetime.present} days worked`}
+          accent="var(--critical)"
         />
       </div>
 

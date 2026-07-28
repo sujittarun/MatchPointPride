@@ -3,10 +3,13 @@ import { useStore } from '../lib/store'
 import { navigate } from '../lib/router'
 import type { Student } from '../lib/types'
 import {
+  MAX_AMOUNT,
+  clampDay,
   currentMonthKey,
   dateLabelFull,
   inr,
   initials,
+  nonNegative,
   todayISO,
   uid,
 } from '../lib/format'
@@ -373,8 +376,33 @@ export function StudentSheet({
       toast('Pick a batch first.', 'bad')
       return
     }
-    const day = Math.min(28, Math.max(1, Number(dueDay) || 1))
+    if (Number(fee) < 0) {
+      toast('Fee cannot be negative.', 'bad')
+      return
+    }
+    if (nonNegative(fee) > MAX_AMOUNT) {
+      toast('That fee looks too large — check the digits.', 'bad')
+      return
+    }
+    const feeVal = nonNegative(fee)
+    const day = clampDay(dueDay)
+    let cancelled = 0
     update((d) => {
+      // A student who has stopped coming shouldn't keep generating an
+      // overdue badge, so close out anything still open for them.
+      if (!active && s) {
+        for (const r of d.reminders) {
+          if (r.studentId === s.id && (r.status === 'pending' || r.status === 'sent')) {
+            r.status = 'cancelled'
+            r.history.push({
+              at: new Date().toISOString(),
+              action: 'cancelled',
+              note: 'Student marked inactive',
+            })
+            cancelled++
+          }
+        }
+      }
       if (isNew) {
         d.students.push({
           id: uid('stu'),
@@ -383,7 +411,7 @@ export function StudentSheet({
           phone: phone.replace(/\s/g, ''),
           guardian: guardian.trim() || undefined,
           joinedOn,
-          monthlyFee: Number(fee) || 0,
+          monthlyFee: feeVal,
           feeDueDay: day,
           active,
         })
@@ -395,13 +423,19 @@ export function StudentSheet({
           t.phone = phone.replace(/\s/g, '')
           t.guardian = guardian.trim() || undefined
           t.joinedOn = joinedOn
-          t.monthlyFee = Number(fee) || 0
+          t.monthlyFee = feeVal
           t.feeDueDay = day
           t.active = active
         }
       }
     })
-    toast(isNew ? 'Student added.' : 'Student updated.')
+    toast(
+      isNew
+        ? 'Student added.'
+        : cancelled > 0
+          ? `Student marked inactive. ${cancelled} open reminder${cancelled === 1 ? '' : 's'} closed.`
+          : 'Student updated.',
+    )
     onClose()
   }
 
@@ -470,6 +504,7 @@ export function StudentSheet({
             className="input"
             type="number"
             inputMode="numeric"
+            min={0}
             value={fee}
             onChange={(e) => setFee(e.target.value)}
             placeholder="2000"

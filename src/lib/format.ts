@@ -142,6 +142,31 @@ export function dueLabel(dueISO: string, today = todayISO()): string {
   return `${Math.abs(diff)} days overdue`
 }
 
+/* ---------------- numeric input guards ---------------- */
+
+/** Largest amount a single entry may carry. Generous enough that no real
+    academy figure hits it, tight enough to catch an extra typed digit. */
+export const MAX_AMOUNT = 10_000_000 // ₹1 crore
+
+/** Whole, non-negative number from free text. Blank/garbage becomes 0. */
+export function nonNegative(v: string | number): number {
+  const n = typeof v === 'number' ? v : Number(String(v).trim())
+  if (!Number.isFinite(n)) return 0
+  return Math.max(0, Math.round(n))
+}
+
+/** Same, but 0 (or blank) means "not set". */
+export function nonNegativeOrUndef(v: string | number): number | undefined {
+  const n = nonNegative(v)
+  return n > 0 ? n : undefined
+}
+
+export function clampDay(v: string | number): number {
+  const n = typeof v === 'number' ? v : Number(String(v).trim())
+  if (!Number.isFinite(n)) return 1
+  return Math.min(28, Math.max(1, Math.round(n)))
+}
+
 export function uid(prefix = 'id'): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36).slice(-4)}`
 }

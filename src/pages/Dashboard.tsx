@@ -270,7 +270,7 @@ export default function Dashboard() {
                     {staff.name}
                   </div>
                   <div className="t-mut truncate">
-                    {staff.role} · {stats.leave} leave, {stats.absent} absent
+                    {staff.role} · {stats.absent} absent of {stats.marked} marked
                   </div>
                 </div>
                 <IconChevronRight size={16} className="t-mut" />

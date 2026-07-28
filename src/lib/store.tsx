@@ -25,32 +25,90 @@ const AUTH_KEY = 'mpp.auth.v1'
    in a hosted database later is a change to this file alone.
    ------------------------------------------------------------------ */
 
-function load(): AppData {
+/** Fill in defaults and migrate older documents in place. Exported so the
+    migration path is testable without a browser. */
+export function normalise(parsed: AppData): AppData {
+  parsed.settings = { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) }
+  parsed.students ??= []
+  parsed.reminders ??= []
+  parsed.staff ??= []
+  parsed.attendance ??= []
+  parsed.transactions ??= []
+  parsed.batches ??= []
+
+  // Attendance used to have four states. Fold the retired ones in:
+  // a half day was worked, a leave day was not.
+  for (const rec of parsed.attendance) {
+    const st = rec.status as string
+    if (st === 'half') rec.status = 'present'
+    else if (st === 'leave') rec.status = 'absent'
+  }
+
+  // Guard against a fee day that can't exist in every month.
+  for (const s of parsed.students) {
+    if (!(s.feeDueDay >= 1 && s.feeDueDay <= 28)) {
+      s.feeDueDay = Math.min(28, Math.max(1, Math.round(s.feeDueDay) || 1))
+    }
+  }
+  return parsed
+}
+
+interface LoadResult {
+  data: AppData
+  error?: string
+}
+
+function load(): LoadResult {
+  let raw: string | null = null
   try {
-    const raw = localStorage.getItem(KEY)
-    if (!raw) return buildSeedData()
+    raw = localStorage.getItem(KEY)
+  } catch {
+    // Storage blocked entirely (private mode, cookies disabled).
+    return {
+      data: buildSeedData(),
+      error: 'This browser is blocking storage, so nothing you enter will be saved.',
+    }
+  }
+
+  // First run — hand over the demo dataset.
+  if (!raw) return { data: buildSeedData() }
+
+  try {
     const parsed = JSON.parse(raw) as AppData
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.batches)) {
-      return buildSeedData()
+      throw new Error('unrecognised shape')
     }
-    // Fill in any settings key added after this document was written.
-    parsed.settings = { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) }
-    parsed.students ??= []
-    parsed.reminders ??= []
-    parsed.staff ??= []
-    parsed.attendance ??= []
-    parsed.transactions ??= []
-    return parsed
+    return { data: normalise(parsed) }
   } catch {
-    return buildSeedData()
+    /* Saved data is unreadable. Never quietly hand back the demo set —
+       the owner could start typing real data on top of it and make the
+       damage permanent. Keep the raw copy so it can be rescued, and
+       open on a clean slate that obviously isn't their data. */
+    try {
+      localStorage.setItem(`${KEY}.corrupt`, raw)
+    } catch {
+      /* nothing more we can do */
+    }
+    return {
+      data: buildEmptyData(),
+      error:
+        'Saved data could not be read. Your last file was kept under "mpp.data.v1.corrupt" — restore a backup from Settings.',
+    }
   }
 }
 
-function save(data: AppData) {
+function save(data: AppData): string | null {
   try {
     localStorage.setItem(KEY, JSON.stringify(data))
+    return null
   } catch (err) {
-    console.error('Could not save — storage may be full or blocked.', err)
+    console.error('Could not save.', err)
+    const quota =
+      err instanceof DOMException &&
+      (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED')
+    return quota
+      ? 'Storage is full — that change was NOT saved. Download a backup, then clear old data.'
+      : 'That change could not be saved to this browser.'
   }
 }
 
@@ -82,16 +140,50 @@ interface Ctx {
 const StoreContext = createContext<Ctx | null>(null)
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [data, setData] = useState<AppData>(load)
-  const [authed, setAuthed] = useState<boolean>(
-    () => sessionStorage.getItem(AUTH_KEY) === '1',
-  )
+  const initial = useRef<LoadResult | null>(null)
+  if (initial.current === null) initial.current = load()
+
+  const [data, setData] = useState<AppData>(initial.current.data)
+  const [authed, setAuthed] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem(AUTH_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
   const [toasts, setToasts] = useState<Toast[]>([])
   const toastId = useRef(0)
+  const firstSave = useRef(true)
+  const lastSaveError = useRef<string | null>(null)
+
+  const toast = useCallback((text: string, tone: 'good' | 'bad' = 'good') => {
+    const id = ++toastId.current
+    setToasts((t) => [...t, { id, text, tone }])
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), tone === 'bad' ? 6000 : 2800)
+  }, [])
+
+  // Report a load problem exactly once (the ref survives StrictMode's
+  // double-invoked effects in development).
+  const reportedLoadError = useRef(false)
+  useEffect(() => {
+    const err = initial.current?.error
+    if (err && !reportedLoadError.current) {
+      reportedLoadError.current = true
+      toast(err, 'bad')
+    }
+  }, [toast])
 
   useEffect(() => {
-    save(data)
-  }, [data])
+    // Don't rewrite storage with what we just read out of it.
+    if (firstSave.current) {
+      firstSave.current = false
+      return
+    }
+    const err = save(data)
+    // Only nag once per failure streak, not on every keystroke.
+    if (err && err !== lastSaveError.current) toast(err, 'bad')
+    lastSaveError.current = err
+  }, [data, toast])
 
   /* Structured-clone the document before handing it to the mutator so
      callers can write plainly (`draft.students.push(...)`) without
@@ -113,12 +205,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [update],
   )
 
-  const toast = useCallback((text: string, tone: 'good' | 'bad' = 'good') => {
-    const id = ++toastId.current
-    setToasts((t) => [...t, { id, text, tone }])
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2800)
-  }, [])
-
   const resetToDemo = useCallback(() => setData(buildSeedData()), [])
   const startFresh = useCallback(() => setData(buildEmptyData()), [])
 
@@ -130,13 +216,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.batches)) {
         return { ok: false, message: 'That file is not a Match Point Pride backup.' }
       }
-      parsed.settings = { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) }
-      parsed.students ??= []
-      parsed.reminders ??= []
-      parsed.staff ??= []
-      parsed.attendance ??= []
-      parsed.transactions ??= []
-      setData(parsed)
+      setData(normalise(parsed))
       return { ok: true, message: 'Backup restored.' }
     } catch {
       return { ok: false, message: 'Could not read that file — is it valid JSON?' }
@@ -148,7 +228,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const ok = code.trim() === (data.settings.passcode || '1234')
       if (ok) {
         setAuthed(true)
-        sessionStorage.setItem(AUTH_KEY, '1')
+        try {
+          sessionStorage.setItem(AUTH_KEY, '1')
+        } catch {
+          /* session storage unavailable — stay logged in for this render only */
+        }
       }
       return ok
     },
@@ -157,7 +241,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     setAuthed(false)
-    sessionStorage.removeItem(AUTH_KEY)
+    try {
+      sessionStorage.removeItem(AUTH_KEY)
+    } catch {
+      /* nothing to clear */
+    }
   }, [])
 
   const value = useMemo<Ctx>(

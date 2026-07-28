@@ -72,7 +72,8 @@ export interface Staff {
   active: boolean
 }
 
-export type AttendanceStatus = 'present' | 'absent' | 'leave' | 'half'
+/** Deliberately just two states — the academy marks a day worked or not. */
+export type AttendanceStatus = 'present' | 'absent'
 
 export interface AttendanceRecord {
   /** `${staffId}__${date}` — one record per staff per day. */

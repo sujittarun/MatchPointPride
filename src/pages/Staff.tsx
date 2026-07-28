@@ -3,11 +3,14 @@ import { useStore } from '../lib/store'
 import { navigate } from '../lib/router'
 import type { AttendanceStatus, Staff as StaffT } from '../lib/types'
 import {
+  MAX_AMOUNT,
   currentMonthKey,
   dateLabelFull,
   initials,
   isSunday,
   monthLabel,
+  nonNegative,
+  nonNegativeOrUndef,
   shiftMonth,
   todayISO,
   uid,
@@ -23,11 +26,9 @@ import {
   IconStaff,
 } from '../components/icons'
 
-const STATUSES: Array<{ value: AttendanceStatus; short: string; label: string }> = [
-  { value: 'present', short: 'P', label: 'Present' },
-  { value: 'half', short: 'H', label: 'Half day' },
-  { value: 'leave', short: 'L', label: 'Leave' },
-  { value: 'absent', short: 'A', label: 'Absent' },
+const STATUSES: Array<{ value: AttendanceStatus; label: string }> = [
+  { value: 'present', label: 'Present' },
+  { value: 'absent', label: 'Absent' },
 ]
 
 export default function Staff() {
@@ -49,8 +50,8 @@ export default function Staff() {
       ? teamStats.reduce((a, t) => a + t.stats.consistency, 0) / teamStats.length
       : 0
 
-  const totalLeaves = teamStats.reduce((a, t) => a + t.stats.leave, 0)
   const totalAbsent = teamStats.reduce((a, t) => a + t.stats.absent, 0)
+  const totalPresent = teamStats.reduce((a, t) => a + t.stats.present, 0)
   const unmarked = isSunday(markDate)
     ? 0
     : active.filter((s) => !map.get(`${s.id}__${markDate}`)).length
@@ -149,7 +150,7 @@ export default function Staff() {
                     </div>
                     <div className="t-mut truncate">{s.role}</div>
                   </div>
-                  <div className="row gap-4" style={{ flexShrink: 0 }}>
+                  <div className="row gap-6" style={{ flexShrink: 0 }}>
                     {STATUSES.map((st) => {
                       const on = cur === st.value
                       return (
@@ -158,21 +159,21 @@ export default function Staff() {
                           onClick={() => mark(s.id, st.value)}
                           aria-label={`${s.name}: ${st.label}`}
                           aria-pressed={on}
-                          title={st.label}
                           style={{
-                            width: 34,
-                            height: 34,
-                            borderRadius: 10,
+                            minWidth: 66,
+                            minHeight: 44,
+                            padding: '8px 8px',
+                            borderRadius: 11,
                             border: `1px solid ${on ? 'transparent' : 'var(--line-strong)'}`,
                             background: on ? ATT_COLOR[st.value] : 'var(--surface-2)',
-                            color: on ? 'rgba(0,0,0,0.78)' : 'var(--ink-muted)',
-                            fontWeight: 700,
-                            fontSize: '0.78rem',
+                            color: on ? 'rgba(0,0,0,0.8)' : 'var(--ink-secondary)',
+                            fontWeight: on ? 700 : 550,
+                            fontSize: '0.79rem',
                             cursor: 'pointer',
                             transition: 'background 140ms var(--ease)',
                           }}
                         >
-                          {st.short}
+                          {st.label}
                         </button>
                       )
                     })}
@@ -220,10 +221,10 @@ export default function Staff() {
           accent="var(--good)"
         />
         <Stat
-          label="Leaves taken"
-          value={String(totalLeaves)}
-          foot={`${totalAbsent} unplanned absences`}
-          accent="var(--series-1)"
+          label="Days absent"
+          value={String(totalAbsent)}
+          foot={`${totalPresent} days worked`}
+          accent="var(--critical)"
         />
       </div>
 
@@ -283,7 +284,7 @@ function StaffCard({
 
           <div className="row gap-10" style={{ marginTop: 9 }}>
             <span className="t-mut">
-              <strong style={{ color: 'var(--ink-primary)' }}>{stats.leave}</strong> leave
+              <strong style={{ color: 'var(--ink-primary)' }}>{stats.present}</strong> present
             </span>
             <span className="t-mut">
               <strong style={{ color: 'var(--ink-primary)' }}>{stats.absent}</strong> absent
@@ -301,8 +302,6 @@ function StaffCard({
             <ShareBar
               parts={[
                 { label: 'Present', value: stats.present, color: ATT_COLOR.present },
-                { label: 'Half', value: stats.half, color: ATT_COLOR.half },
-                { label: 'Leave', value: stats.leave, color: ATT_COLOR.leave },
                 { label: 'Absent', value: stats.absent, color: ATT_COLOR.absent },
               ]}
               height={6}
@@ -357,6 +356,15 @@ export function StaffSheet({
       toast('Enter a name.', 'bad')
       return
     }
+    if (Number(salary) < 0) {
+      toast('Salary cannot be negative.', 'bad')
+      return
+    }
+    if (nonNegative(salary) > MAX_AMOUNT) {
+      toast('That salary looks too large — check the digits.', 'bad')
+      return
+    }
+    const salaryVal = nonNegativeOrUndef(salary)
     update((d) => {
       if (isNew) {
         d.staff.push({
@@ -365,7 +373,7 @@ export function StaffSheet({
           role: role.trim() || 'Coach',
           phone: phone.replace(/\s/g, '') || undefined,
           joinedOn,
-          monthlySalary: Number(salary) || undefined,
+          monthlySalary: salaryVal,
           active,
         })
       } else if (s) {
@@ -375,7 +383,7 @@ export function StaffSheet({
           t.role = role.trim() || 'Coach'
           t.phone = phone.replace(/\s/g, '') || undefined
           t.joinedOn = joinedOn
-          t.monthlySalary = Number(salary) || undefined
+          t.monthlySalary = salaryVal
           t.active = active
         }
       }
@@ -437,6 +445,7 @@ export function StaffSheet({
             className="input"
             type="number"
             inputMode="numeric"
+            min={0}
             value={salary}
             onChange={(e) => setSalary(e.target.value)}
             placeholder="24000"

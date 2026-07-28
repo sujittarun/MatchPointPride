@@ -165,13 +165,7 @@ function makeAttendance(staff: Staff[], rand: () => number): AttendanceRecord[] 
       if (date > today) continue
       if (isSunday(date)) continue
       for (const s of staff) {
-        const r = rand()
-        const rel = reliability[s.id]
-        let status: AttendanceStatus
-        if (r < rel) status = 'present'
-        else if (r < rel + (1 - rel) * 0.5) status = 'leave'
-        else if (r < rel + (1 - rel) * 0.8) status = 'absent'
-        else status = 'half'
+        const status: AttendanceStatus = rand() < reliability[s.id] ? 'present' : 'absent'
         out.push({ id: `${s.id}__${date}`, staffId: s.id, date, status })
       }
     }

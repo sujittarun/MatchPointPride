@@ -769,8 +769,6 @@ export function ShareBar({
 
 export const ATT_COLOR: Record<string, string> = {
   present: 'var(--good)',
-  half: 'var(--warning)',
-  leave: 'var(--series-1)',
   absent: 'var(--critical)',
 }
 
@@ -841,8 +839,6 @@ export function MonthHeatmap({
       <Legend
         items={[
           { label: 'Present', color: ATT_COLOR.present },
-          { label: 'Half day', color: ATT_COLOR.half },
-          { label: 'Leave', color: ATT_COLOR.leave },
           { label: 'Absent', color: ATT_COLOR.absent },
         ]}
       />

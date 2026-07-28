@@ -8,6 +8,7 @@ import {
   type TxnType,
 } from '../lib/types'
 import {
+  MAX_AMOUNT,
   currentMonthKey,
   dateLabel,
   inr,
@@ -151,14 +152,14 @@ export default function Finance() {
           label="Revenue"
           value={inr(totals.revenue, { compact: true })}
           delta={prev.revenue > 0 ? { value: revDelta } : undefined}
-          foot="vs last month"
+          foot={prev.revenue > 0 ? 'vs last month' : 'this month'}
           accent="var(--money-in)"
         />
         <Stat
           label="Expenses"
           value={inr(totals.expense, { compact: true })}
           delta={prev.expense > 0 ? { value: expDelta, higherIsBetter: false } : undefined}
-          foot="vs last month"
+          foot={prev.expense > 0 ? 'vs last month' : 'this month'}
           accent="var(--money-out)"
         />
         <Stat
@@ -389,8 +390,12 @@ function TxnSheet({
 
   const save = () => {
     const amt = Number(amount)
-    if (!amt || amt <= 0) {
-      toast('Enter an amount.', 'bad')
+    if (!Number.isFinite(amt) || amt <= 0) {
+      toast('Enter an amount greater than zero.', 'bad')
+      return
+    }
+    if (amt > MAX_AMOUNT) {
+      toast('That amount looks too large — check the digits.', 'bad')
       return
     }
     update((d) => {
@@ -566,6 +571,7 @@ function TxnSheet({
             className="input"
             type="number"
             inputMode="numeric"
+            min={1}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0"

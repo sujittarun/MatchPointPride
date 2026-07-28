@@ -42,13 +42,14 @@ Tracking covers outstanding amount, how many are waiting on you, **response rate
 Marking one paid writes the revenue straight into Finance.
 
 ### 3. Staff attendance
-A one-tap **P / H / L / A** grid marks the whole team for a day; tapping the same status
-again clears it. Sundays are the weekly off and are excluded from every calculation.
+Two states only — **Present** or **Absent**. One tap per person marks the day; tapping the
+same state again clears it. Sundays are the weekly off and are excluded from every
+calculation.
 
 Per staff member: a consistency ring, a tappable month calendar, month-by-month consistency
-with values printed on each bar, a leaves-vs-absences chart, and lifetime figures. Half days
-count as half attendance. Consistency is measured against days actually *marked*, so an
-unmarked backlog never quietly deflates someone's score.
+with the figure printed on each bar, a days-absent chart, and lifetime totals. Consistency
+is measured against days actually *marked*, so an unmarked backlog never quietly deflates
+someone's score.
 
 ### 4. Finance
 Revenue from student fees, **court bookings** (logged as a single booking, a day's total or
@@ -57,7 +58,20 @@ headline, in-vs-out and net-trend charts, revenue-by-source donut, expense-by-ca
 breakdown, and a full ledger.
 
 Recording a student fee here also closes that student's open reminder — the four features
-share one dataset rather than four.
+share one dataset rather than four. Marking a student **inactive** closes their open
+reminders too, so someone who has stopped coming doesn't sit in the overdue list forever.
+
+---
+
+## Testing
+
+`npm run build` typechecks the whole app. Beyond that the project has been through an
+end-to-end regression covering the logic layer (129 assertions over date arithmetic,
+money formatting, collection rate, attendance maths, reminder stats and the storage
+migration path) and a UI pass on a 375×812 viewport: negative and malformed input on every
+form, referential integrity across deletes, the member-discontinue flow, corrupt and
+unreadable saved data, malformed backup imports, long-string layout overflow, and the
+empty state of every screen.
 
 ---
 

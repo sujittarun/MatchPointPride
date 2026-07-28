@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useStore } from '../lib/store'
 import { navigate } from '../lib/router'
 import type { Batch, BatchKind } from '../lib/types'
-import { inr, uid } from '../lib/format'
+import { MAX_AMOUNT, inr, nonNegative, nonNegativeOrUndef, uid } from '../lib/format'
 import { activeStudentsOf, studentsOf } from '../lib/selectors'
 import { Empty, Sheet, Field } from '../components/ui'
 import { Donut, seriesColor } from '../components/charts'
@@ -241,6 +241,16 @@ export function BatchSheet({
       toast('Give the batch a name.', 'bad')
       return
     }
+    if (Number(fee) < 0 || Number(capacity) < 0) {
+      toast('Fee and capacity cannot be negative.', 'bad')
+      return
+    }
+    if (nonNegative(fee) > MAX_AMOUNT) {
+      toast('That fee looks too large — check the digits.', 'bad')
+      return
+    }
+    const feeVal = nonNegative(fee)
+    const capVal = nonNegativeOrUndef(capacity)
     update((d) => {
       if (isNew) {
         const usedSlots = new Set(d.batches.map((x) => x.colorSlot))
@@ -258,8 +268,8 @@ export function BatchSheet({
           kind,
           slot: slot.trim() || undefined,
           days: days.length ? days : undefined,
-          fee: Number(fee) || 0,
-          capacity: Number(capacity) || undefined,
+          fee: feeVal,
+          capacity: capVal,
           colorSlot,
           note: note.trim() || undefined,
           createdAt: new Date().toISOString(),
@@ -271,8 +281,8 @@ export function BatchSheet({
           t.kind = kind
           t.slot = slot.trim() || undefined
           t.days = days.length ? days : undefined
-          t.fee = Number(fee) || 0
-          t.capacity = Number(capacity) || undefined
+          t.fee = feeVal
+          t.capacity = capVal
           t.note = note.trim() || undefined
         }
       }
@@ -351,6 +361,7 @@ export function BatchSheet({
             className="input"
             type="number"
             inputMode="numeric"
+            min={0}
             value={fee}
             onChange={(e) => setFee(e.target.value)}
             placeholder="2000"
@@ -362,6 +373,7 @@ export function BatchSheet({
             className="input"
             type="number"
             inputMode="numeric"
+            min={0}
             value={capacity}
             onChange={(e) => setCapacity(e.target.value)}
             placeholder="12"
