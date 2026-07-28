@@ -1,0 +1,147 @@
+/* Formatting + date helpers. All dates are handled as plain
+   YYYY-MM-DD strings in local time — never as UTC Date objects —
+   so a day never shifts across a timezone boundary. */
+
+const RUPEE = '₹'
+
+export function inr(n: number, opts: { compact?: boolean } = {}): string {
+  const v = Math.round(n)
+  if (opts.compact) {
+    const a = Math.abs(v)
+    if (a >= 1e7) return `${RUPEE}${trim(v / 1e7)}Cr`
+    if (a >= 1e5) return `${RUPEE}${trim(v / 1e5)}L`
+    if (a >= 1e3) return `${RUPEE}${trim(v / 1e3)}k`
+  }
+  return RUPEE + v.toLocaleString('en-IN')
+}
+
+function trim(n: number): string {
+  return n.toFixed(n < 10 ? 1 : 0).replace(/\.0$/, '')
+}
+
+export function pct(n: number, digits = 0): string {
+  if (!isFinite(n)) return '—'
+  return `${n.toFixed(digits)}%`
+}
+
+export function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+/* ---------------- dates ---------------- */
+
+export function todayISO(): string {
+  return toISO(new Date())
+}
+
+export function toISO(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/** Parse YYYY-MM-DD into a local-midnight Date. */
+export function fromISO(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, (m ?? 1) - 1, d ?? 1)
+}
+
+export function monthKey(iso: string): string {
+  return iso.slice(0, 7)
+}
+
+export function currentMonthKey(): string {
+  return todayISO().slice(0, 7)
+}
+
+const MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+]
+
+export function monthLabel(key: string): string {
+  const [y, m] = key.split('-').map(Number)
+  return `${MONTHS[(m ?? 1) - 1]} ${y}`
+}
+
+export function monthShort(key: string): string {
+  const [, m] = key.split('-').map(Number)
+  return MONTHS[(m ?? 1) - 1]
+}
+
+export function dateLabel(iso: string): string {
+  const d = fromISO(iso)
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}`
+}
+
+export function dateLabelFull(iso: string): string {
+  const d = fromISO(iso)
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`
+}
+
+export function daysInMonth(key: string): number {
+  const [y, m] = key.split('-').map(Number)
+  return new Date(y, m, 0).getDate()
+}
+
+/** Month keys ending at `endKey`, most recent last. */
+export function lastMonths(n: number, endKey = currentMonthKey()): string[] {
+  const [y, m] = endKey.split('-').map(Number)
+  const out: string[] = []
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(y, m - 1 - i, 1)
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+  return out
+}
+
+export function shiftMonth(key: string, delta: number): string {
+  const [y, m] = key.split('-').map(Number)
+  const d = new Date(y, m - 1 + delta, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+export function addDays(iso: string, n: number): string {
+  const d = fromISO(iso)
+  d.setDate(d.getDate() + n)
+  return toISO(d)
+}
+
+export function daysBetween(a: string, b: string): number {
+  const ms = fromISO(b).getTime() - fromISO(a).getTime()
+  return Math.round(ms / 86400000)
+}
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+export function weekday(iso: string): string {
+  return WEEKDAYS[fromISO(iso).getDay()]
+}
+
+export function isSunday(iso: string): boolean {
+  return fromISO(iso).getDay() === 0
+}
+
+/** All YYYY-MM-DD dates in a month, in order. */
+export function monthDates(key: string): string[] {
+  const n = daysInMonth(key)
+  return Array.from({ length: n }, (_, i) => `${key}-${String(i + 1).padStart(2, '0')}`)
+}
+
+/** Relative label for a due date: "3 days late", "Due today", "in 5 days". */
+export function dueLabel(dueISO: string, today = todayISO()): string {
+  const diff = daysBetween(today, dueISO)
+  if (diff === 0) return 'Due today'
+  if (diff === 1) return 'Due tomorrow'
+  if (diff > 1) return `Due in ${diff} days`
+  if (diff === -1) return '1 day overdue'
+  return `${Math.abs(diff)} days overdue`
+}
+
+export function uid(prefix = 'id'): string {
+  return `${prefix}_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36).slice(-4)}`
+}

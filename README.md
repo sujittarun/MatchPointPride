@@ -1,0 +1,137 @@
+# Match Point Pride
+
+A phone-first operations console for **Match Point Pride Badminton Academy**, Alkapur
+Township, Manikonda, Hyderabad — built for one person (Venu) to run the academy from
+their phone.
+
+**Live:** https://sujittarun.github.io/MatchPointPride/
+
+A public landing page, then a passcode gate, then four things: batches, reminders,
+staff attendance and money.
+
+---
+
+## What it does
+
+### Landing
+One screen — academy name, Venu's details as founder and national-level player,
+location, and a login button. Every word of it is editable in **Settings → Landing
+page**; nothing about the owner is hard-coded.
+
+### 1. Batches
+Add, edit and delete batches. Ships with the six the academy actually runs — four kids
+batches, one professional squad, one membership — and each carries an **optional** slot
+time and day list, so a membership batch with no fixed slot is a first-class case rather
+than a blank field.
+
+Students belong to a batch and carry a phone number, monthly fee and fee-due day.
+"Mark paid" on the roster records the payment and closes that student's reminder in one
+tap.
+
+### 2. Reminders and reminder tracking
+**Generate this month** creates a fee reminder for every active student who hasn't paid
+and doesn't already have one open — nothing is sent automatically.
+
+Each reminder sends over **WhatsApp** (`wa.me` deep link with the message pre-filled),
+SMS or a phone call. Every send is logged: channel, timestamp, and a running send count,
+so a reminder that took three nudges says so. The message comes from an editable template
+with `{student} {guardian} {amount} {due} {batch} {slot} {academy} {owner}` placeholders.
+
+Tracking covers outstanding amount, how many are waiting on you, **response rate**
+(of reminders actually sent, how many ended in payment) and a six-month sent-vs-paid chart.
+Marking one paid writes the revenue straight into Finance.
+
+### 3. Staff attendance
+A one-tap **P / H / L / A** grid marks the whole team for a day; tapping the same status
+again clears it. Sundays are the weekly off and are excluded from every calculation.
+
+Per staff member: a consistency ring, a tappable month calendar, month-by-month consistency
+with values printed on each bar, a leaves-vs-absences chart, and lifetime figures. Half days
+count as half attendance. Consistency is measured against days actually *marked*, so an
+unmarked backlog never quietly deflates someone's score.
+
+### 4. Finance
+Revenue from student fees, **court bookings** (logged as a single booking, a day's total or
+a whole month), membership or other. Expenses across eight categories. Month stepper, net
+headline, in-vs-out and net-trend charts, revenue-by-source donut, expense-by-category
+breakdown, and a full ledger.
+
+Recording a student fee here also closes that student's open reminder — the four features
+share one dataset rather than four.
+
+---
+
+## Two things to know before relying on it
+
+**1. Data lives in your browser, on your phone.** GitHub Pages serves static files and has
+no server or database, so everything is stored in `localStorage`. Clearing browser data,
+using a different phone, or switching from Chrome to Safari means the data isn't there.
+
+> **Download a backup from Settings regularly.** It's a single JSON file and restores onto
+> any device. This is the one habit the app depends on.
+
+Every read and write goes through `src/lib/store.tsx`, so moving to a hosted database later
+(Supabase, Firebase) is a change to that one file — the rest of the app doesn't know where
+its data comes from.
+
+**2. The passcode is not security.** The page is public; the 4-digit code only stops a
+casual passer-by on a shared phone. Anyone who knows the URL can reach whatever is stored in
+that browser. Real access control needs a backend, which this deliberately doesn't have.
+
+---
+
+## Design
+
+Built phone-first, because that's the only place it gets used: bottom tab bar, bottom-sheet
+modals, card lists instead of wide tables, 44px minimum touch targets, 16px inputs so iOS
+never zooms on focus, and safe-area insets for notched screens. On a desktop it stays a
+centred column rather than stretching — deliberate, not unfinished.
+
+Dark-committed, on a cool near-black (`#141A21`) with a shuttle-lime accent (`#C8FF4D`).
+Tokens live in `src/styles/tokens.css`; a light theme would be a token swap, not a rewrite.
+
+**Charts** are hand-rolled SVG — no charting dependency, so the whole app is 77 kB gzipped
+with React as the only runtime dependency. The categorical series colours were validated
+against the actual chart surface for lightness band, chroma floor, colour-vision-deficiency
+separation, normal-vision separation and 3:1 contrast — all six slots pass. Throughout:
+one value axis per chart (never two scales), fixed slot order (never cycled), a legend
+whenever there's more than one series, and tap/hover tooltips on every plot. Money green
+and red sit in the CVD warning band, so they always ship with a label and a direction arrow
+rather than leaning on hue.
+
+---
+
+## Running it
+
+```bash
+npm install
+```
+
+```bash
+npm run dev
+```
+
+```bash
+npm run build
+```
+
+Pushing to `main` builds and deploys via `.github/workflows/deploy.yml`. Set
+**Settings → Pages → Source** to **GitHub Actions** once.
+
+The app opens with a demo dataset so the charts have something to say. When you're ready
+for real data, **Settings → Clear demo data and start fresh** wipes it and keeps the six
+batches.
+
+Default passcode is **1234** — change it in Settings.
+
+## Layout
+
+```
+src/
+  lib/          types · localStorage store · derived analytics · date+money helpers · seed
+  components/   ui primitives (sheet, stat, confirm) · SVG icons · charts
+  pages/        Landing · Dashboard · Batches · Reminders · Staff · Finance · Settings
+  styles/       tokens.css · global.css · landing.css
+```
+
+No router, charting or UI library — hash routing, SVG charts and CSS are all local.

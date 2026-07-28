@@ -1,0 +1,94 @@
+/* ============================================================
+   Match Point Pride — design tokens
+   Dark-committed surface. Chart series colors are the validated
+   dark-column steps (see README § Design), verified against the
+   #141A21 chart surface: lightness band, chroma floor, CVD
+   separation, normal-vision floor and 3:1 contrast all pass.
+   ============================================================ */
+
+:root {
+  color-scheme: dark;
+
+  /* --- planes -------------------------------------------------- */
+  --plane: #080B0F;
+  --surface-1: #141A21;
+  --surface-2: #19212A;
+  --surface-3: #1F2831;
+  --surface-glass: rgba(28, 37, 47, 0.72);
+
+  /* --- ink ----------------------------------------------------- */
+  --ink-primary: #F2F6FA;
+  --ink-secondary: #A7B4C2;
+  --ink-muted: #6C7A89;
+
+  /* --- lines --------------------------------------------------- */
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --grid: #232C36;
+  --axis: #313C48;
+
+  /* --- brand --------------------------------------------------- */
+  --brand: #C8FF4D;          /* shuttle lime — the signature accent */
+  --brand-dim: #A3D62F;
+  --brand-ink: #0B1004;      /* text on brand fills */
+  --brand-wash: rgba(200, 255, 77, 0.12);
+  --brand-glow: rgba(200, 255, 77, 0.28);
+
+  /* --- chart series (validated categorical order) -------------- */
+  --series-1: #3987e5;  /* blue    */
+  --series-2: #d95926;  /* orange  */
+  --series-3: #199e70;  /* aqua    */
+  --series-4: #c98500;  /* yellow  */
+  --series-5: #d55181;  /* magenta */
+  --series-6: #9085e9;  /* violet  */
+
+  /* --- status (fixed, never themed; always with icon + label) --- */
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+
+  /* money semantics — always paired with a label and an arrow,
+     never carried by hue alone (green/red is a CVD-warn pair) */
+  --money-in: #199e70;
+  --money-out: #e66767;
+
+  /* --- shape --------------------------------------------------- */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-xl: 26px;
+  --r-pill: 999px;
+
+  /* --- depth --------------------------------------------------- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 24px 60px -18px rgba(0, 0, 0, 0.75);
+
+  /* --- type ---------------------------------------------------- */
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+  /* --- motion -------------------------------------------------- */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 140ms;
+  --dur: 240ms;
+  --dur-slow: 520ms;
+
+  /* --- layout -------------------------------------------------- */
+  --rail: 248px;
+  --page-max: 1320px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
