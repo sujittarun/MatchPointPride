@@ -264,7 +264,7 @@ export default function Dashboard() {
                   width: '100%',
                 }}
               >
-                <Ring value={stats.consistency} size={44} stroke={5} />
+                <Ring value={stats.consistency} size={48} stroke={5} />
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div className="truncate" style={{ fontSize: '0.875rem', fontWeight: 570 }}>
                     {staff.name}

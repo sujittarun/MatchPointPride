@@ -118,11 +118,19 @@ export interface Transaction {
 
 export interface Settings {
   academyName: string
-  tagline: string
+  /** Hero headline, split so the second line can carry the accent colour. */
+  heroLine1: string
+  heroLine2: string
+  heroSub: string
+  /** The one place coaching credentials are stated, in the academy's voice. */
+  coachingNote: string
+  /** Used for the dashboard greeting, not shown on the public page. */
   ownerName: string
-  ownerTitle: string
-  ownerBio: string
   location: string
+  /** Two facts shown under the hero. */
+  courts: string
+  hours: string
+  /** Drives the public "enquire on WhatsApp" button; hidden when blank. */
   phone: string
   email: string
   established: string

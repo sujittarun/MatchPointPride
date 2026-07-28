@@ -70,18 +70,36 @@ export default function Settings() {
               onChange={(e) => setSettings({ academyName: e.target.value })}
             />
           </Field>
-          <Field label="Tagline" span>
+          <Field label="Headline — first line" span>
             <input
               className="input"
-              value={s.tagline}
-              onChange={(e) => setSettings({ tagline: e.target.value })}
+              value={s.heroLine1}
+              onChange={(e) => setSettings({ heroLine1: e.target.value })}
             />
           </Field>
-          <Field label="Owner name">
+          <Field label="Headline — second line" hint="Shown in the brand green." span>
             <input
               className="input"
-              value={s.ownerName}
-              onChange={(e) => setSettings({ ownerName: e.target.value })}
+              value={s.heroLine2}
+              onChange={(e) => setSettings({ heroLine2: e.target.value })}
+            />
+          </Field>
+          <Field label="Headline sub-text" span>
+            <textarea
+              className="textarea"
+              value={s.heroSub}
+              onChange={(e) => setSettings({ heroSub: e.target.value })}
+            />
+          </Field>
+          <Field
+            label="Coaching note"
+            hint="The one place on the page where coaching credentials are stated."
+            span
+          >
+            <textarea
+              className="textarea"
+              value={s.coachingNote}
+              onChange={(e) => setSettings({ coachingNote: e.target.value })}
             />
           </Field>
           <Field label="Established">
@@ -91,18 +109,11 @@ export default function Settings() {
               onChange={(e) => setSettings({ established: e.target.value })}
             />
           </Field>
-          <Field label="Owner title" hint="Shown in the brand colour under the name." span>
+          <Field label="Owner name" hint="Used for your dashboard greeting.">
             <input
               className="input"
-              value={s.ownerTitle}
-              onChange={(e) => setSettings({ ownerTitle: e.target.value })}
-            />
-          </Field>
-          <Field label="Owner bio" span>
-            <textarea
-              className="textarea"
-              value={s.ownerBio}
-              onChange={(e) => setSettings({ ownerBio: e.target.value })}
+              value={s.ownerName}
+              onChange={(e) => setSettings({ ownerName: e.target.value })}
             />
           </Field>
           <Field label="Location" span>
@@ -110,6 +121,45 @@ export default function Settings() {
               className="input"
               value={s.location}
               onChange={(e) => setSettings({ location: e.target.value })}
+            />
+          </Field>
+          <Field label="Courts">
+            <input
+              className="input"
+              value={s.courts}
+              onChange={(e) => setSettings({ courts: e.target.value })}
+              placeholder="7 indoor courts"
+            />
+          </Field>
+          <Field label="Open hours">
+            <input
+              className="input"
+              value={s.hours}
+              onChange={(e) => setSettings({ hours: e.target.value })}
+              placeholder="5 AM – 1 AM"
+            />
+          </Field>
+          <Field
+            label="Enquiry phone"
+            hint="Add a number to show the WhatsApp enquiry buttons on the public page. Leave blank to hide them."
+            span
+          >
+            <input
+              className="input"
+              type="tel"
+              inputMode="tel"
+              value={s.phone}
+              onChange={(e) => setSettings({ phone: e.target.value })}
+              placeholder="9876543210"
+            />
+          </Field>
+          <Field label="Public email" hint="Optional." span>
+            <input
+              className="input"
+              type="email"
+              value={s.email}
+              onChange={(e) => setSettings({ email: e.target.value })}
+              placeholder="hello@example.com"
             />
           </Field>
         </div>

@@ -681,7 +681,13 @@ export function Ring({
         <div>
           <div
             className="num"
-            style={{ fontSize: size > 80 ? '1.05rem' : '0.85rem', fontWeight: 680, letterSpacing: '-0.03em' }}
+            style={{
+              /* scale with the ring — "100%" was touching the stroke at 44px */
+              fontSize: Math.round(size * 0.23),
+              fontWeight: 680,
+              letterSpacing: '-0.04em',
+              lineHeight: 1,
+            }}
           >
             {v.toFixed(0)}%
           </div>

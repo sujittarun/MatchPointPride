@@ -1,16 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import '../styles/landing.css'
 import { useStore } from '../lib/store'
 import { navigate } from '../lib/router'
 import { Sheet } from '../components/ui'
-import {
-  IconLock,
-  IconShuttle,
-  IconTrophy,
-  IconUsers,
-} from '../components/icons'
-import { initials } from '../lib/format'
+import { IconLock, IconTrophy, IconWhatsApp } from '../components/icons'
 import BrandMark from '../components/BrandMark'
+
+const COURT = `${import.meta.env.BASE_URL}court.jpg`
+
+/** The four stages a player moves through — the whole growth story, in one row. */
+const LADDER = ['Basics', 'Rally', 'Match play', 'Tournament']
 
 export default function Landing() {
   const { data, login, authed } = useStore()
@@ -21,76 +20,127 @@ export default function Landing() {
     if (authed) navigate('/app')
   }, [authed])
 
+  const area = (s.location.split('·').pop() || s.location).split(',')[0].trim()
+  const waHref = s.phone
+    ? `https://wa.me/${(s.countryCode || '91').replace(/\D/g, '')}${s.phone.replace(/\D/g, '')}` +
+      `?text=${encodeURIComponent(`Hi, I'd like to know about badminton coaching at ${s.academyName}.`)}`
+    : null
+
   return (
-    <div className="landing">
-      <svg
-        className="landing__court"
-        viewBox="0 0 400 200"
-        preserveAspectRatio="none"
-        aria-hidden="true"
-      >
-        {/* court in perspective */}
-        <path d="M60 200 L150 20 L250 20 L340 200" />
-        <path d="M22 200 L136 20 L264 20 L378 200" />
-        <line x1="112" y1="94" x2="288" y2="94" />
-        <line x1="86" y1="146" x2="314" y2="146" />
-        <line x1="200" y1="20" x2="200" y2="200" />
-        <line x1="146" y1="42" x2="254" y2="42" />
-      </svg>
+    <div className="lp">
+      <header className="hero">
+        <div className="hero__media">
+          <img
+            src={COURT}
+            alt={`Indoor badminton courts at ${s.academyName}`}
+            fetchPriority="high"
+            decoding="async"
+          />
+        </div>
+        <div className="hero__scrim" />
 
-      <div className="landing__inner">
-        <div className="landing__top">
+        <div className="hero__top">
           <BrandMark size={34} />
-          <span style={{ fontWeight: 620, letterSpacing: '-0.02em', fontSize: '0.92rem' }}>
-            {s.academyName}
-          </span>
+          <span className="hero__wordmark">{s.academyName}</span>
         </div>
 
-        <div className="landing__hero">
-          <span className="landing__eyebrow">
-            <IconTrophy size={14} />
-            {s.location.split(',').slice(-1)[0].trim() || 'Hyderabad'} · Since {s.established}
-          </span>
+        <div className="hero__body">
+          <Rise>
+            <span className="eyebrow">
+              <IconTrophy size={13} />
+              {area} · Since {s.established}
+            </span>
+          </Rise>
 
-          <h1 className="landing__title">
-            Match Point
-            <em>Pride</em>
-          </h1>
+          <Rise delay={80}>
+            <h1 className="hero__title">
+              {s.heroLine1}
+              <span>{s.heroLine2}</span>
+            </h1>
+          </Rise>
 
-          <p className="landing__tagline">{s.tagline}</p>
+          <Rise delay={150}>
+            <p className="hero__sub">{s.heroSub}</p>
+          </Rise>
 
-          <div className="owner">
-            <div className="owner__mark">{initials(s.ownerName)}</div>
-            <div style={{ minWidth: 0 }}>
-              <div className="owner__name">{s.ownerName}</div>
-              <div className="owner__title">{s.ownerTitle}</div>
-              <p className="owner__bio">{s.ownerBio}</p>
+          <Rise delay={220}>
+            <div className="ladder">
+              {LADDER.map((label, i) => (
+                <div className={`rung${i === 0 ? ' rung--first' : ''}`} key={label}>
+                  <span className="rung__dot" />
+                  <span className="rung__label">{label}</span>
+                </div>
+              ))}
             </div>
-          </div>
+          </Rise>
 
-          <div className="landing__pills">
-            <span className="pill">
-              <IconUsers size={14} /> Kids batches
-            </span>
-            <span className="pill">
-              <IconTrophy size={14} /> Professional squad
-            </span>
-            <span className="pill">
-              <IconShuttle size={14} /> Membership
-            </span>
-          </div>
+          {waHref && (
+            <Rise delay={290}>
+              <div className="hero__cta">
+                <a
+                  className="btn btn--primary btn--block"
+                  href={waHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <IconWhatsApp size={17} />
+                  Ask about a trial session
+                </a>
+              </div>
+            </Rise>
+          )}
+
+          <Rise delay={350}>
+            <div className="hero__facts">
+              <span>
+                <b>{s.courts}</b>
+              </span>
+              <i />
+              <span>
+                Open <b>{s.hours}</b>
+              </span>
+            </div>
+          </Rise>
         </div>
+      </header>
 
-        <div className="landing__foot">
-          <button className="btn btn--primary btn--block" onClick={() => setOpen(true)}>
-            <IconLock size={17} />
-            Log in to manage
+      <footer className="close">
+        <Rise>
+          <p className="close__note">{s.coachingNote}</p>
+          <p className="close__loc">{s.location}</p>
+
+          {waHref && (
+            <div className="close__actions">
+              <a
+                className="btn btn--block"
+                href={waHref}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <IconWhatsApp size={16} />
+                Message the academy
+              </a>
+            </div>
+          )}
+
+          <button className="owner-link" onClick={() => setOpen(true)}>
+            <IconLock size={13} />
+            Academy login
           </button>
-          <div className="landing__meta">{s.location}</div>
-        </div>
-      </div>
+        </Rise>
+      </footer>
 
       <PasscodeSheet open={open} onClose={() => setOpen(false)} onSubmit={login} />
+    </div>
+  )
+}
+
+/** Entrance animation. Plays on load — the page is one screen, so there is
+    nothing below the fold worth waiting on a scroll observer for. */
+function Rise({ children, delay = 0 }: { children: ReactNode; delay?: number }) {
+  return (
+    <div className="rise" style={{ '--d': `${delay}ms` } as CSSProperties}>
+      {children}
     </div>
   )
 }
@@ -136,7 +186,7 @@ function PasscodeSheet({
   }
 
   return (
-    <Sheet open={open} onClose={onClose} title="Enter passcode" subtitle="Owner access">
+    <Sheet open={open} onClose={onClose} title="Academy login" subtitle="Owner access only">
       <div className="pass">
         {[0, 1, 2, 3].map((i) => (
           <div

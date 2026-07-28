@@ -1,8 +1,8 @@
 # Match Point Pride
 
-A phone-first operations console for **Match Point Pride Badminton Academy**, Alkapur
-Township, Manikonda, Hyderabad — built for one person (Venu) to run the academy from
-their phone.
+A phone-first operations console for **Match Point Pride Badminton Academy** — Alkapur
+Road 30, beside Sam Houston Intl School, Narsingi, Hyderabad — built for one person to
+run the academy from their phone.
 
 **Live:** https://sujittarun.github.io/MatchPointPride/
 
@@ -14,9 +14,18 @@ staff attendance and money.
 ## What it does
 
 ### Landing
-One screen — academy name, Venu's details as founder and national-level player,
-location, and a login button. Every word of it is editable in **Settings → Landing
-page**; nothing about the owner is hard-coded.
+One screen and a short closing strip — about 1.3 phone screens end to end. A full-bleed
+photograph of the courts, a headline about the player's progression rather than the
+owner's CV, and a four-stage ladder (Basics → Rally → Match play → Tournament) that shows
+a parent where their child is and what comes next.
+
+Coaching credentials appear exactly once, in a single sentence at the bottom. Adding an
+enquiry phone number in Settings turns on the WhatsApp buttons; leave it blank and they
+stay hidden. Every word is editable in **Settings → Landing page** — nothing is
+hard-coded.
+
+The hero image is `public/court.jpg`. Replace that file to change it; nothing else needs
+touching.
 
 ### 1. Batches
 Add, edit and delete batches. Ships with the six the academy actually runs — four kids

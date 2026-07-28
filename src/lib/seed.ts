@@ -20,17 +20,21 @@ import {
 
 export const DEFAULT_SETTINGS = {
   academyName: 'Match Point Pride',
-  tagline: 'Badminton, played properly.',
+  heroLine1: 'Every player starts somewhere.',
+  heroLine2: 'Nobody stays there.',
+  heroSub:
+    'Structured badminton coaching in Hyderabad — from holding the racket properly ' +
+    'to walking into a tournament draw.',
+  coachingNote:
+    'Small batches, grouped by level rather than age — and a standard on court set by ' +
+    'someone who has played at national level.',
   ownerName: 'Venu',
-  ownerTitle: 'Founder & Head Coach · National-level player',
-  ownerBio:
-    'Venu has played badminton at the national level and has coached in Hyderabad since 2011. ' +
-    'Match Point Pride runs kids batches, a professional squad and open membership play — ' +
-    'small groups, individual attention, and a standard that holds.',
-  location: 'Alkapur Township, Manikonda, Hyderabad',
+  location: 'Alkapur Road 30 · beside Sam Houston Intl School · Narsingi, Hyderabad',
+  courts: '7 indoor courts',
+  hours: '5 AM – 1 AM',
   phone: '',
   email: '',
-  established: '2011',
+  established: '2008',
   passcode: '1234',
   countryCode: '91',
   reminderTemplate:
