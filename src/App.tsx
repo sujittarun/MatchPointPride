@@ -12,6 +12,7 @@ import {
 } from './components/icons'
 import { overdueReminders, unmarkedToday } from './lib/selectors'
 import BrandMark from './components/BrandMark'
+import { ACADEMY } from './lib/academy'
 
 import Landing from './pages/Landing'
 import Dashboard from './pages/Dashboard'
@@ -74,7 +75,7 @@ export default function App() {
             <BrandMark size={36} />
             <div style={{ minWidth: 0 }}>
               <div className="topbar__title">{title}</div>
-              <div className="topbar__sub">{data.settings.academyName}</div>
+              <div className="topbar__sub">{ACADEMY.name}</div>
             </div>
           </div>
           <button

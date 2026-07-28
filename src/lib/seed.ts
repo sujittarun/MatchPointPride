@@ -19,28 +19,7 @@ import {
 } from './format'
 
 export const DEFAULT_SETTINGS = {
-  academyName: 'Match Point Pride',
-  heroLine1: 'Every player starts somewhere.',
-  heroLine2: 'Nobody stays there.',
-  heroSub:
-    'Structured badminton coaching in Hyderabad — from holding the racket properly ' +
-    'to walking into a tournament draw.',
-  coachingNote:
-    'Small batches, grouped by level rather than age — and a standard on court set by ' +
-    'someone who has played at national level.',
-  ownerName: 'Venu',
-  location: 'Alkapur Road 30 · beside Sam Houston Intl School · Narsingi, Hyderabad',
-  courts: '7 indoor courts',
-  hours: '5 AM – 1 AM',
-  phone: '',
-  email: '',
-  established: '2008',
   passcode: '1234',
-  countryCode: '91',
-  reminderTemplate:
-    'Hi {guardian}, this is a gentle reminder from {academy}. ' +
-    "{student}'s fee of {amount} for {batch} is due on {due}. " +
-    'Please ignore if already paid. — {owner}',
 }
 
 /* Deterministic PRNG so the demo dataset looks identical on every

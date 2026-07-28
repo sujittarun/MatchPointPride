@@ -16,6 +16,7 @@ import {
   staffMonthStats,
 } from '../lib/selectors'
 import { Stat } from '../components/ui'
+import { ACADEMY } from '../lib/academy'
 import { BarChart, HBarChart, Ring, seriesColor } from '../components/charts'
 import {
   IconArrowDown,
@@ -66,7 +67,7 @@ export default function Dashboard() {
           {weekday(today)} · {monthLabel(d.thisMonth)}
         </p>
         <h1 className="t-h1">
-          {greeting}, {data.settings.ownerName}
+          {greeting}, {ACADEMY.ownerName}
         </h1>
       </div>
 

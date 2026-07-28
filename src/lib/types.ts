@@ -116,28 +116,11 @@ export interface Transaction {
   createdAt: string
 }
 
+/* Everything else about the academy is fixed copy — see lib/academy.ts.
+   The only thing worth changing from a phone is the PIN. */
 export interface Settings {
-  academyName: string
-  /** Hero headline, split so the second line can carry the accent colour. */
-  heroLine1: string
-  heroLine2: string
-  heroSub: string
-  /** The one place coaching credentials are stated, in the academy's voice. */
-  coachingNote: string
-  /** Used for the dashboard greeting, not shown on the public page. */
-  ownerName: string
-  location: string
-  /** Two facts shown under the hero. */
-  courts: string
-  hours: string
-  /** Drives the public "enquire on WhatsApp" button; hidden when blank. */
-  phone: string
-  email: string
-  established: string
   /** Client-side gate only — see README § Security. */
   passcode: string
-  countryCode: string
-  reminderTemplate: string
 }
 
 export interface AppData {

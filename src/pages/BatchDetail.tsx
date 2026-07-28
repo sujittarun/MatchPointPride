@@ -14,6 +14,7 @@ import {
   uid,
 } from '../lib/format'
 import { studentsOf } from '../lib/selectors'
+import { ACADEMY } from '../lib/academy'
 import { Confirm, Empty, Field, Sheet, Stat } from '../components/ui'
 import { seriesColor } from '../components/charts'
 import { BatchSheet } from './Batches'
@@ -243,7 +244,7 @@ export default function BatchDetail({ id }: { id: string }) {
                     {s.phone && (
                       <a
                         className="btn btn--ghost btn--icon btn--sm"
-                        href={`https://wa.me/${data.settings.countryCode}${s.phone.replace(/\D/g, '')}`}
+                        href={`https://wa.me/${ACADEMY.countryCode}${s.phone.replace(/\D/g, '')}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         aria-label={`WhatsApp ${s.name}`}

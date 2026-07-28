@@ -21,6 +21,7 @@ import {
   whatsappLink,
 } from '../lib/selectors'
 import { Confirm, Empty, Field, Sheet, Stat } from '../components/ui'
+import { ACADEMY } from '../lib/academy'
 import { BarChart } from '../components/charts'
 import {
   IconBell,
@@ -322,7 +323,7 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
       return
     }
     if (channel === 'whatsapp') {
-      window.open(whatsappLink(data.settings.countryCode, student.phone, message), '_blank', 'noopener')
+      window.open(whatsappLink(ACADEMY.countryCode, student.phone, message), '_blank', 'noopener')
     } else if (channel === 'sms') {
       window.location.href = smsLink(student.phone, message)
     } else {
@@ -626,7 +627,7 @@ function NewReminderSheet({ open, onClose }: { open: boolean; onClose: () => voi
 
         <Field
           label="Custom message"
-          hint="Leave blank to use the template from Settings. Placeholders: {student} {guardian} {amount} {due} {batch} {academy} {owner}"
+          hint="Leave blank to use the standard fee message. Placeholders: {student} {guardian} {amount} {due} {batch} {academy} {owner}"
           span
         >
           <textarea

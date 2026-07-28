@@ -19,8 +19,8 @@ const AUTH_KEY = 'mpp.auth.v1'
 
    This is the whole backend. It is deliberate: the app is a static
    GitHub Pages site with no server, used by one person. The trade-off
-   is real — data lives in this browser on this device, so Settings →
-   Backup is the only thing standing between the academy and a wiped
+   is real — data lives in this browser on this device, so the backup in
+   Settings is the only thing standing between the academy and a wiped
    phone. Everything reads and writes through this module, so swapping
    in a hosted database later is a change to this file alone.
    ------------------------------------------------------------------ */

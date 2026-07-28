@@ -5,25 +5,21 @@ import { navigate } from '../lib/router'
 import { Sheet } from '../components/ui'
 import { IconLock, IconTrophy, IconWhatsApp } from '../components/icons'
 import BrandMark from '../components/BrandMark'
+import { ACADEMY as A } from '../lib/academy'
 
 const COURT = `${import.meta.env.BASE_URL}court.jpg`
 
-/** The four stages a player moves through — the whole growth story, in one row. */
-const LADDER = ['Basics', 'Rally', 'Match play', 'Tournament']
-
 export default function Landing() {
-  const { data, login, authed } = useStore()
-  const s = data.settings
+  const { login, authed } = useStore()
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
     if (authed) navigate('/app')
   }, [authed])
 
-  const area = (s.location.split('·').pop() || s.location).split(',')[0].trim()
-  const waHref = s.phone
-    ? `https://wa.me/${(s.countryCode || '91').replace(/\D/g, '')}${s.phone.replace(/\D/g, '')}` +
-      `?text=${encodeURIComponent(`Hi, I'd like to know about badminton coaching at ${s.academyName}.`)}`
+  const waHref = A.enquiryPhone
+    ? `https://wa.me/${A.countryCode.replace(/\D/g, '')}${A.enquiryPhone.replace(/\D/g, '')}` +
+      `?text=${encodeURIComponent(`Hi, I'd like to know about badminton coaching at ${A.name}.`)}`
     : null
 
   return (
@@ -32,7 +28,7 @@ export default function Landing() {
         <div className="hero__media">
           <img
             src={COURT}
-            alt={`Indoor badminton courts at ${s.academyName}`}
+            alt={`Indoor badminton courts at ${A.name}`}
             fetchPriority="high"
             decoding="async"
           />
@@ -41,31 +37,31 @@ export default function Landing() {
 
         <div className="hero__top">
           <BrandMark size={34} />
-          <span className="hero__wordmark">{s.academyName}</span>
+          <span className="hero__wordmark">{A.name}</span>
         </div>
 
         <div className="hero__body">
           <Rise>
             <span className="eyebrow">
               <IconTrophy size={13} />
-              {area} · Since {s.established}
+              {A.area} · Since {A.established}
             </span>
           </Rise>
 
           <Rise delay={80}>
             <h1 className="hero__title">
-              {s.heroLine1}
-              <span>{s.heroLine2}</span>
+              {A.heroLine1}
+              <span>{A.heroLine2}</span>
             </h1>
           </Rise>
 
           <Rise delay={150}>
-            <p className="hero__sub">{s.heroSub}</p>
+            <p className="hero__sub">{A.heroSub}</p>
           </Rise>
 
           <Rise delay={220}>
             <div className="ladder">
-              {LADDER.map((label, i) => (
+              {A.ladder.map((label, i) => (
                 <div className={`rung${i === 0 ? ' rung--first' : ''}`} key={label}>
                   <span className="rung__dot" />
                   <span className="rung__label">{label}</span>
@@ -93,11 +89,11 @@ export default function Landing() {
           <Rise delay={350}>
             <div className="hero__facts">
               <span>
-                <b>{s.courts}</b>
+                <b>{A.courts}</b>
               </span>
               <i />
               <span>
-                Open <b>{s.hours}</b>
+                Open <b>{A.hours}</b>
               </span>
             </div>
           </Rise>
@@ -106,8 +102,8 @@ export default function Landing() {
 
       <footer className="close">
         <Rise>
-          <p className="close__note">{s.coachingNote}</p>
-          <p className="close__loc">{s.location}</p>
+          <p className="close__note">{A.coachingNote}</p>
+          <p className="close__loc">{A.location}</p>
 
           {waHref && (
             <div className="close__actions">

@@ -9,6 +9,7 @@ import type {
   Transaction,
 } from './types'
 import { currentMonthKey, isSunday, lastMonths, monthDates, todayISO } from './format'
+import { ACADEMY } from './academy'
 
 /* ------------------------------------------------------------------
    Batches & students
@@ -306,15 +307,14 @@ export function renderReminderMessage(
 ): string {
   const student = studentById(data, reminder.studentId)
   const batch = batchById(data, student?.batchId)
-  const s = data.settings
   const due = reminder.dueDate
   const [y, m, d] = due.split('-')
-  const template = reminder.message?.trim() ? reminder.message : s.reminderTemplate
+  const template = reminder.message?.trim() ? reminder.message : ACADEMY.reminderTemplate
   return template
     .replace(/\{guardian\}/g, student?.guardian || student?.name || 'there')
     .replace(/\{student\}/g, student?.name ?? 'your ward')
-    .replace(/\{academy\}/g, s.academyName)
-    .replace(/\{owner\}/g, s.ownerName)
+    .replace(/\{academy\}/g, ACADEMY.name)
+    .replace(/\{owner\}/g, ACADEMY.ownerName)
     .replace(/\{batch\}/g, batch?.name ?? 'the batch')
     .replace(/\{amount\}/g, reminder.amount ? `₹${reminder.amount.toLocaleString('en-IN')}` : 'the fee')
     .replace(/\{due\}/g, `${d}/${m}/${y}`)

@@ -19,13 +19,24 @@ photograph of the courts, a headline about the player's progression rather than 
 owner's CV, and a four-stage ladder (Basics → Rally → Match play → Tournament) that shows
 a parent where their child is and what comes next.
 
-Coaching credentials appear exactly once, in a single sentence at the bottom. Adding an
-enquiry phone number in Settings turns on the WhatsApp buttons; leave it blank and they
-stay hidden. Every word is editable in **Settings → Landing page** — nothing is
-hard-coded.
+Coaching credentials appear exactly once, in a single sentence at the bottom.
 
-The hero image is `public/court.jpg`. Replace that file to change it; nothing else needs
-touching.
+All of the copy and the academy details live in **`src/lib/academy.ts`** — written once,
+then left alone, so it isn't cluttering a settings form on a phone. Setting
+`enquiryPhone` there switches on the public WhatsApp buttons. The hero image is
+`public/court.jpg`; replace that file and nothing else needs touching.
+
+### Settings
+Three things, because that's all a single operator needs to touch from a phone:
+
+- **PIN** — change it, or log out. Default `1234`.
+- **Student sheet** — export every student to CSV (opens in Excel, Numbers or Google
+  Sheets), edit in the spreadsheet, import it back. Only `Name` and `Batch` are required;
+  a student already in that batch is **updated rather than duplicated**, so the
+  export → edit → import loop is safe to repeat. Unknown batches are never invented —
+  those rows are reported with their row number and the reason. Export with no students
+  to get a blank template.
+- **Backup & restore** — the full JSON document, and the danger-zone resets.
 
 ### 1. Batches
 Add, edit and delete batches. Ships with the six the academy actually runs — four kids
@@ -75,12 +86,12 @@ reminders too, so someone who has stopped coming doesn't sit in the overdue list
 ## Testing
 
 `npm run build` typechecks the whole app. Beyond that the project has been through an
-end-to-end regression covering the logic layer (129 assertions over date arithmetic,
-money formatting, collection rate, attendance maths, reminder stats and the storage
-migration path) and a UI pass on a 375×812 viewport: negative and malformed input on every
-form, referential integrity across deletes, the member-discontinue flow, corrupt and
-unreadable saved data, malformed backup imports, long-string layout overflow, and the
-empty state of every screen.
+end-to-end regression covering the logic layer (164 assertions over date arithmetic,
+money formatting, collection rate, attendance maths, reminder stats, the storage
+migration path and CSV round-tripping) and a UI pass on a 375×812 viewport: negative and
+malformed input on every form, referential integrity across deletes, the
+member-discontinue flow, corrupt and unreadable saved data, malformed backup and
+spreadsheet imports, long-string layout overflow, and the empty state of every screen.
 
 ---
 
