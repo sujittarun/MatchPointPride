@@ -14,6 +14,8 @@ export interface Batch {
   coachId?: string
   /** Default monthly fee suggested when adding a student to this batch. */
   fee: number
+  /** No fee rule prices this batch yet. */
+  feePending?: boolean
   /**
    * Where this batch's fees are collected. Batches may share one UPI ID or
    * each have its own; the reminder message quotes whichever belongs to the
@@ -52,6 +54,8 @@ export interface Student {
   guardian?: string
   joinedOn: string
   monthlyFee: number
+  /** No fee resolved anywhere in the chain — registered, price not settled. */
+  feePending?: boolean
   /** Day of month the fee falls due (1-31; short months clamp to their last day). */
   feeDueDay: number
   active: boolean

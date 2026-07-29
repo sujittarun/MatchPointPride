@@ -460,7 +460,9 @@ export async function addStudent(a: {
     plan_months: 1,
     custom_amount: a.customFee ?? null,
     joined_on: a.joinedOn,
-    renewal_on: nextDueDate(a.feeDueDay),
+    // Anchored to the joining date, not to today: a student entered
+    // with a past start owes from that date, not from next month.
+    renewal_on: nextDueDate(a.feeDueDay, a.joinedOn),
     status: 'active',
   })) as Array<{ id: number }>
   const enrollmentId = enrolments?.[0]?.id
@@ -559,7 +561,7 @@ export async function reenroll(a: {
     p_batch: a.batchId,
     p_sport: 'badminton',
     p_joined_on: a.joinedOn ?? null,
-    p_renewal_on: nextDueDate(a.feeDueDay),
+    p_renewal_on: nextDueDate(a.feeDueDay, a.joinedOn),
     p_plan_months: 1,
     p_custom_amount: a.customFee ?? null,
   })
@@ -1019,13 +1021,16 @@ export const read = {
 export async function batchFees(
   centreId: number,
   batches: { id: number; sport: string }[],
-): Promise<Record<number, number>> {
-  const out: Record<number, number> = {}
+): Promise<Record<number, number | null>> {
+  // null, not 0. resolve_fee returning nothing means no rule exists
+  // anywhere in the chain, which is a different fact from a fee of
+  // zero and has to stay tellable apart all the way to the screen.
+  const out: Record<number, number | null> = {}
   const answers = await Promise.all(
     batches.map((b) =>
       resolveFee({ centreId, sport: b.sport, batchId: b.id, months: 1 })
-        .then((f) => [b.id, Number(f.amount ?? 0)] as const)
-        .catch(() => [b.id, 0] as const),
+        .then((f) => [b.id, f.amount == null ? null : Number(f.amount)] as const)
+        .catch(() => [b.id, null] as const),
     ),
   )
   for (const [id, amount] of answers) out[id] = amount
@@ -1036,7 +1041,7 @@ export async function batchFees(
 export async function loadEverything(): Promise<{
   centreId: number
   batches: BatchRow[]
-  fees: Record<number, number>
+  fees: Record<number, number | null>
   upi: Record<string, { upi: string; payee: string }>
   members: MemberRow[]
   enrolments: EnrollmentRow[]

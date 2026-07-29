@@ -224,7 +224,8 @@ export default function BatchDetail({ id }: { id: string }) {
                 >
                   <div className="listrow__title">{s.name}</div>
                   <div className="listrow__meta">
-                    {inr(s.monthlyFee)} · due {ordinal(s.feeDueDay)}
+                    {s.feePending ? 'Fee pending' : inr(s.monthlyFee)} · due{' '}
+                    {ordinal(s.feeDueDay)}
                   </div>
                 </button>
                 <div className="listrow__end">

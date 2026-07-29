@@ -540,6 +540,24 @@ eq('billed on the 30th is NOT silently the 28th', nextDueDate(30, '2026-07-01'),
 eq('rolls across a year boundary', nextDueDate(5, '2026-12-31'), '2027-01-05')
 eq('leap February', nextDueDate(31, '2024-02-01'), '2024-02-29')
 
+/* The rejoin boundary. `from` is the day billing starts — the day they
+   came back — NOT today. Anchored to today instead, a student brought
+   back on 15 June got a renewal of 27 August: two and a half months
+   free, and silent, because a renewal in the future never reaches the
+   chase ladder at all. */
+eq('backdated return bills from the return, not from today',
+   nextDueDate(27, '2026-06-15'), '2026-06-27')
+eq('returning after the billing day waits for next month',
+   nextDueDate(27, '2026-06-28'), '2026-07-27')
+eq('returning ON the billing day is due that day',
+   nextDueDate(27, '2026-06-27'), '2026-06-27')
+eq('a backdated return into a short month still clamps',
+   nextDueDate(31, '2026-02-01'), '2026-02-28')
+eq('a return dated in the future bills from the future date',
+   nextDueDate(10, '2026-09-05'), '2026-09-10')
+ok('a backdated return lands in the past, so the ladder can see it',
+   nextDueDate(27, '2026-06-15') < '2026-07-29')
+
 /* ================= finding someone already on file =================
    Name AND number. A parent's phone carries all their children, so a
    number-only match would offer to bring back the wrong one. */

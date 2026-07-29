@@ -189,7 +189,9 @@ export default function StudentDetail({ id }: { id: string }) {
         </div>
         <hr className="divider" style={{ margin: '14px 0 12px' }} />
         <div className="t-mut">
-          Fee of {inr(s.monthlyFee)} due on the {ordinal(s.feeDueDay)} of each month.
+          {s.feePending
+            ? `No fee set yet — due on the ${ordinal(s.feeDueDay)} of each month once it is.`
+            : `Fee of ${inr(s.monthlyFee)} due on the ${ordinal(s.feeDueDay)} of each month.`}
         </div>
       </div>
 

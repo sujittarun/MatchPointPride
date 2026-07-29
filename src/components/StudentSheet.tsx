@@ -139,9 +139,15 @@ export function StudentSheet({
       batchId: batch,
       joinedOn,
       feeDueDay: day,
-      // Only send a fee when it differs from what the batch resolves to;
-      // otherwise the batch rule keeps owning it.
-      customFee: feeVal === (feeOf(batch) ?? -1) ? null : feeVal,
+      /* Blank means "not decided", NOT zero. An empty field used to be
+         read as 0 and stored as a real override, and resolve_fee honours
+         an override of 0 — so registering a student without a fee priced
+         them free for ever and the batch's own rate never applied.
+         Blank now sends null and the batch rule owns the fee, which is
+         also what makes registering someone before their fee is settled
+         a normal thing to do. An explicit 0 is still an explicit 0. */
+      customFee:
+        fee.trim() === '' || feeVal === (feeOf(batch) ?? -1) ? null : feeVal,
       active,
     })
     setSaving(false)

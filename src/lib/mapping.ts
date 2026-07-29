@@ -65,7 +65,7 @@ function batchKind(b: BatchRow): Batch['kind'] {
 
 export function toBatches(
   rows: BatchRow[],
-  fees: Record<number, number>,
+  fees: Record<number, number | null>,
   upi: Record<string, { upi: string; payee: string }>,
 ): Batch[] {
   return rows.map((b, i) => {
@@ -77,6 +77,7 @@ export function toBatches(
       slot: slotLabel(b),
       days: (b.days ?? []).map((d) => DAY_NAME[d]).filter(Boolean),
       fee: fees[b.id] ?? 0,
+      feePending: fees[b.id] == null,
       capacity: b.capacity ?? undefined,
       colorSlot: (i % 6) + 1,
       upiId: u?.upi,
@@ -105,7 +106,7 @@ export function toStaff(rows: CoachRow[]): Staff[] {
 export function toStudents(
   members: MemberRow[],
   enrolments: EnrollmentRow[],
-  fees: Record<number, number>,
+  fees: Record<number, number | null>,
 ): Student[] {
   /* Every enrolment a member has ever had, oldest first. Someone who
      left and came back has more than one, and each is a spell — which is
@@ -129,6 +130,7 @@ export function toStudents(
     // server refuses two live at once, so "find" is unambiguous.
     const e = history.find((x) => x.status === 'active') ?? history[history.length - 1]
     const active = e.status === 'active' && m.status !== 'discontinued'
+    const resolved = e.custom_amount ?? (e.batch_id ? (fees[e.batch_id] ?? null) : null)
     out.push({
       id: String(m.id),
       name: m.name,
@@ -138,7 +140,11 @@ export function toStudents(
       joinedOn: e.joined_on ?? m.joined ?? '',
       // The fee shown is the batch's resolved amount, or the enrolment's
       // own override — both computed by resolve_fee, never here.
-      monthlyFee: e.custom_amount ?? (e.batch_id ? (fees[e.batch_id] ?? 0) : 0),
+      // `resolved` is null only when nothing in the seven-level chain
+      // priced them: registered, fee not settled. That is not ₹0, and
+      // showing it as ₹0 is how a student ends up quietly free.
+      monthlyFee: resolved ?? 0,
+      feePending: resolved === null,
       feeDueDay: e.renewal_on ? Number(e.renewal_on.slice(8, 10)) : 1,
       active,
       note: m.notes ?? undefined,
@@ -243,7 +249,7 @@ export function toAttendance(rows: AttendanceRow[]): AttendanceRecord[] {
 /** Everything above, assembled into what StoreProvider hands the pages. */
 export function assemble(a: {
   batches: BatchRow[]
-  fees: Record<number, number>
+  fees: Record<number, number | null>
   upi: Record<string, { upi: string; payee: string }>
   members: MemberRow[]
   enrolments: EnrollmentRow[]

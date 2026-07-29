@@ -208,6 +208,12 @@ export function clampDay(v: string | number): number {
  * The next date a fee falls due: the billing day this month, or next
  * month if it has already gone by.
  *
+ * `from` is the day billing STARTS — the day they joined or rejoined,
+ * not today. Anchoring it to today instead is how a student brought
+ * back on 15 June ended up with a renewal of 27 August: two and a half
+ * months of training nobody was ever asked to pay for, and invisible,
+ * because a renewal in the future never enters the chase ladder.
+ *
  * Built from `dueDateFor` and plain string comparison, NOT from
  * `new Date(...).toISOString()`. That pattern looks harmless and is
  * wrong everywhere east of Greenwich: `new Date(y, m, d)` is local
@@ -216,10 +222,10 @@ export function clampDay(v: string | number): number {
  * A student billed on the 1st was stored as due on the 31st of the
  * month before.
  */
-export function nextDueDate(feeDay: number, today = todayISO()): string {
-  const thisMonth = dueDateFor(today.slice(0, 7), feeDay)
-  // On the day itself the fee is due today, not in a month's time.
-  return thisMonth >= today ? thisMonth : dueDateFor(shiftMonth(today.slice(0, 7), 1), feeDay)
+export function nextDueDate(feeDay: number, from = todayISO()): string {
+  const sameMonth = dueDateFor(from.slice(0, 7), feeDay)
+  // On the day itself the fee is due that day, not a month later.
+  return sameMonth >= from ? sameMonth : dueDateFor(shiftMonth(from.slice(0, 7), 1), feeDay)
 }
 
 export function dueDateFor(monthKey: string, feeDay: number): string {
