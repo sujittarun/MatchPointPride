@@ -13,7 +13,18 @@ import { buildEmptyData, buildSeedData, DEFAULT_SETTINGS } from './seed'
 import { allImages, putRaw } from './images'
 import { reportIssue } from './telemetry'
 import {
+  addExpense as cloudAddExpense,
+  addRevenue as cloudAddRevenue,
   addStudent as cloudAddStudent,
+  deleteBatch as cloudDeleteBatch,
+  deleteStaff as cloudDeleteStaff,
+  deleteExpense as cloudDeleteExpense,
+  logReminderSent as cloudLogReminderSent,
+  markStaffDay as cloudMarkStaffDay,
+  voidPaymentById as cloudVoidPayment,
+  recordPayment as cloudRecordPayment,
+  saveBatch as cloudSaveBatch,
+  saveStaff as cloudSaveStaff,
   updateStudent as cloudUpdateStudent,
   isSignedIn,
   loadEverything,
@@ -25,7 +36,6 @@ import {
 import * as vault from './vault'
 import { assemble } from './mapping'
 
-const KEY = 'mpp.data.v1'
 const AUTH_KEY = 'mpp.auth.v1'
 const ATTEMPTS_KEY = 'mpp.pin.attempts'
 
@@ -146,61 +156,12 @@ interface LoadResult {
   error?: string
 }
 
+/* Nothing is read from the device any more. The app opens empty and
+   fills from Postgres as soon as a session exists — see refresh(). An
+   empty shell for that first paint is honest: there genuinely is no
+   data yet, and a stale local copy would be a guess dressed as a fact. */
 function load(): LoadResult {
-  let raw: string | null = null
-  try {
-    raw = localStorage.getItem(KEY)
-  } catch {
-    // Storage blocked entirely (private mode, cookies disabled).
-    return {
-      data: buildSeedData(),
-      error: 'This browser is blocking storage, so nothing you enter will be saved.',
-    }
-  }
-
-  // First run — hand over the demo dataset.
-  if (!raw) return { data: buildSeedData() }
-
-  try {
-    const parsed = JSON.parse(raw) as AppData
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.batches)) {
-      throw new Error('unrecognised shape')
-    }
-    return { data: normalise(parsed) }
-  } catch {
-    /* Saved data is unreadable. Never quietly hand back the demo set —
-       the owner could start typing real data on top of it and make the
-       damage permanent. Keep the raw copy so it can be rescued, and
-       open on a clean slate that obviously isn't their data. */
-    try {
-      localStorage.setItem(`${KEY}.corrupt`, raw)
-    } catch {
-      /* nothing more we can do */
-    }
-    return {
-      data: buildEmptyData(),
-      error:
-        'Saved data could not be read. Your last file was kept under "mpp.data.v1.corrupt" — restore a backup from Settings.',
-    }
-  }
-}
-
-function save(data: AppData): string | null {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(data))
-    return null
-  } catch (err) {
-    console.error('Could not save.', err)
-    // The owner sees a toast and taps it away. Without this line nobody
-    // ever finds out the change was lost.
-    reportIssue('save', err)
-    const quota =
-      err instanceof DOMException &&
-      (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED')
-    return quota
-      ? 'Storage is full — that change was NOT saved. Download a backup, then clear old data.'
-      : 'That change could not be saved to this browser.'
-  }
+  return { data: buildEmptyData() }
 }
 
 /* ------------------------------------------------------------------
@@ -234,6 +195,16 @@ interface Ctx {
   loading: boolean
   /** Non-null when the last read failed; the pages show stale data with a banner. */
   loadError: string | null
+  saveBatch: (a: { id?: string; name: string; days: number[]; startTime: string; endTime: string; capacity?: number | null; fee: number }) => Promise<{ ok: boolean; message: string }>
+  removeBatch: (id: string) => Promise<{ ok: boolean; message: string }>
+  recordFee: (a: { enrollmentId: number; amount: number; onDate?: string; mode?: string; note?: string }) => Promise<{ ok: boolean; message: string }>
+  addRevenue: (a: { label: string; amount: number; onDate: string; kind: 'Court' | 'Membership' | 'Coaching'; note?: string }) => Promise<{ ok: boolean; message: string }>
+  addExpense: (a: { category: string; amount: number; onDate: string; note?: string }) => Promise<{ ok: boolean; message: string }>
+  logReminderSent: (a: { enrollmentId: number; stage: string; amount: number | null; phone: string | null; body: string; channel: 'whatsapp' | 'sms' | 'call' }) => Promise<{ ok: boolean; message: string }>
+  removeEntry: (a: { kind: 'payment' | 'expense'; id: number }) => Promise<{ ok: boolean; message: string }>
+  saveStaff: (a: { id?: string; name: string; role: string; phone?: string; active?: boolean }) => Promise<{ ok: boolean; message: string }>
+  removeStaff: (id: string) => Promise<{ ok: boolean; message: string }>
+  markStaffDay: (a: { coachId: string; date: string; status: 'present' | 'absent' }) => Promise<{ ok: boolean; message: string }>
   /** Create or update a student, in Postgres. */
   saveStudent: (input: {
     id?: string
@@ -274,8 +245,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [loadError, setLoadError] = useState<string | null>(null)
   const centreId = useRef(0)
   const toastId = useRef(0)
-  const firstSave = useRef(true)
-  const lastSaveError = useRef<string | null>(null)
 
   const toast = useCallback((text: string, tone: 'good' | 'bad' = 'good') => {
     const id = ++toastId.current
@@ -321,28 +290,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (authed) void refresh()
   }, [authed, refresh])
 
-  useEffect(() => {
-    // Don't rewrite storage with what we just read out of it.
-    if (firstSave.current) {
-      firstSave.current = false
-      return
-    }
-    const err = save(data)
-    if (err) {
-      /* The page has already said "Student added." — it says that the
-         moment the state changes, and the save happens here, one render
-         later. Both toasts then sit on screen contradicting each other,
-         and the cheerful one is the lie: the row is in memory and will
-         be gone on reload. Retract it rather than argue with it.
+  /* The write-to-localStorage effect is gone.
 
-         Done here, centrally, because twenty-three call sites toast
-         success and not one of them can know whether it stuck. */
-      setToasts((t) => t.filter((x) => x.tone !== 'good'))
-      // Only nag once per failure streak, not on every keystroke.
-      if (err !== lastSaveError.current) toast(err, 'bad')
-    }
-    lastSaveError.current = err
-  }, [data, toast])
+     It was the last thing that could quietly lose work: a page mutated
+     local state, this wrote it to the phone, and the next refresh()
+     replaced it with whatever the database held. The edit vanished with
+     no error at all. Postgres is the only store now — every mutation
+     goes through one of the write helpers above and is read straight
+     back.
+
+     What still uses localStorage, and should: the sealed session vault,
+     the PIN attempt ladder, and payment screenshots in IndexedDB. None
+     of those are academy records. */
 
   /* Structured-clone the document before handing it to the mutator so
      callers can write plainly (`draft.students.push(...)`) without
@@ -447,6 +406,95 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      says — a new enrolment appears in reminder_queue the moment its
      renewal date lands in range — and the only way to be sure the
      screen matches the database is to ask the database. */
+  /* Every write goes through here: run it, re-read everything, and give
+     the caller a plain yes or no. The re-read is not caution — a write
+     routinely changes more than it says. Recording a fee moves a renewal
+     date and drops a student out of the reminder queue, and the only way
+     to be sure the screen agrees with the database is to ask it. */
+  const write = useCallback(
+    async (label: string, fn: () => Promise<unknown>) => {
+      if (!isSignedIn()) return { ok: false, message: 'Not signed in to the academy database.' }
+      try {
+        await fn()
+        await refresh()
+        return { ok: true, message: '' }
+      } catch (err) {
+        reportIssue(label, err)
+        return {
+          ok: false,
+          message: err instanceof Error ? err.message : 'Could not save to the academy database.',
+        }
+      }
+    },
+    [refresh],
+  )
+
+  const saveBatch = useCallback(
+    (a: { id?: string; name: string; days: number[]; startTime: string; endTime: string; capacity?: number | null; fee: number }) =>
+      write('save batch', () =>
+        cloudSaveBatch({ ...a, id: a.id ? Number(a.id) : undefined, centreId: centreId.current }),
+      ),
+    [write],
+  )
+
+  const removeBatch = useCallback(
+    (id: string) => write('delete batch', () => cloudDeleteBatch(Number(id))),
+    [write],
+  )
+
+  /* Fees go through record_fee_payment and nothing else. It is the one
+     write path: it rolls the renewal forward, writes the period the
+     money covers, and closes the reminder, in one transaction. Inserting
+     into payments directly would record the money and none of that. */
+  const recordFee = useCallback(
+    (a: { enrollmentId: number; amount: number; onDate?: string; mode?: string; note?: string }) =>
+      write('record fee', () => cloudRecordPayment(a)),
+    [write],
+  )
+
+  const addRevenue = useCallback(
+    (a: { label: string; amount: number; onDate: string; kind: 'Court' | 'Membership' | 'Coaching'; note?: string }) =>
+      write('add revenue', () => cloudAddRevenue(a)),
+    [write],
+  )
+
+  const addExpense = useCallback(
+    (a: { category: string; amount: number; onDate: string; note?: string }) =>
+      write('add expense', () => cloudAddExpense(a)),
+    [write],
+  )
+
+  const saveStaff = useCallback(
+    (a: { id?: string; name: string; role: string; phone?: string; active?: boolean }) =>
+      write('save staff', () => cloudSaveStaff({ ...a, id: a.id ? Number(a.id) : undefined })),
+    [write],
+  )
+
+  const removeStaff = useCallback(
+    (id: string) => write('delete staff', () => cloudDeleteStaff(Number(id))),
+    [write],
+  )
+
+  const markStaffDay = useCallback(
+    (a: { coachId: string; date: string; status: 'present' | 'absent' }) =>
+      write('mark attendance', () => cloudMarkStaffDay(a)),
+    [write],
+  )
+
+  const logReminderSent = useCallback(
+    (a: { enrollmentId: number; stage: string; amount: number | null; phone: string | null; body: string; channel: 'whatsapp' | 'sms' | 'call' }) =>
+      write('log reminder', () => cloudLogReminderSent(a)),
+    [write],
+  )
+
+  const removeEntry = useCallback(
+    (a: { kind: 'payment' | 'expense'; id: number }) =>
+      write('delete entry', () =>
+        a.kind === 'payment' ? cloudVoidPayment(a.id, 'removed by owner') : cloudDeleteExpense(a.id),
+      ),
+    [write],
+  )
+
   const saveStudent = useCallback(
     async (input: {
       id?: string
@@ -550,9 +598,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       data, update, setSettings, resetToDemo, startFresh,
       importJSON, exportJSON, authed, login, enrol, enrolled: vault.isEnrolled(), logout, toasts, toast,
       loading, loadError, refresh, saveStudent,
+      saveBatch, removeBatch, recordFee, addRevenue, addExpense,
+      saveStaff, removeStaff, markStaffDay, logReminderSent, removeEntry,
     }),
     [data, update, setSettings, resetToDemo, startFresh, importJSON,
-     exportJSON, authed, login, enrol, logout, toasts, toast, loading, loadError, refresh, saveStudent],
+     exportJSON, authed, login, enrol, logout, toasts, toast, loading, loadError, refresh, saveStudent,
+     saveBatch, removeBatch, recordFee, addRevenue, addExpense,
+     saveStaff, removeStaff, markStaffDay, logReminderSent, removeEntry],
   )
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>

@@ -10,10 +10,8 @@ import {
   isSunday,
   monthLabel,
   nonNegative,
-  nonNegativeOrUndef,
   shiftMonth,
   todayISO,
-  uid,
 } from '../lib/format'
 import { attendanceMap, staffMonthStats, staffTrend } from '../lib/selectors'
 import { Empty, Field, Sheet } from '../components/ui'
@@ -32,7 +30,7 @@ const STATUSES: Array<{ value: AttendanceStatus; label: string }> = [
 ]
 
 export default function Staff() {
-  const { data, update, toast } = useStore()
+  const { data, toast, markStaffDay } = useStore()
   const [month, setMonth] = useState(currentMonthKey())
   const [markDate, setMarkDate] = useState(todayISO())
   const [editing, setEditing] = useState<StaffT | 'new' | null>(null)
@@ -56,32 +54,28 @@ export default function Staff() {
     : active.filter((s) => !map.get(`${s.id}__${markDate}`)).length
 
   const mark = (staffId: string, status: AttendanceStatus) => {
-    const id = `${staffId}__${markDate}`
-    update((d) => {
-      const existing = d.attendance.find((r) => r.id === id)
-      if (existing) {
-        // Tapping the same status again clears it.
-        if (existing.status === status) {
-          d.attendance = d.attendance.filter((r) => r.id !== id)
-        } else {
-          existing.status = status
-        }
-      } else {
-        d.attendance.push({ id, staffId, date: markDate, status })
-      }
+    /* One row per person per day in the database, so this is an
+       upsert and re-tapping the same status simply rewrites it. The old
+       behaviour — tap twice to clear — is gone: an absent row and no row
+       mean different things to attendance_dashboard, and "no record"
+       is not something a tap should be able to assert. */
+    void markStaffDay({ coachId: staffId, date: markDate, status }).then((r) => {
+      if (!r.ok) toast(r.message, 'bad')
     })
   }
 
   const markAllPresent = () => {
-    update((d) => {
-      for (const s of d.staff.filter((x) => x.active)) {
-        const id = `${s.id}__${markDate}`
-        if (!d.attendance.some((r) => r.id === id)) {
-          d.attendance.push({ id, staffId: s.id, date: markDate, status: 'present' })
-        }
-      }
-    })
-    toast('Everyone marked present.')
+    void (async () => {
+      const active = data.staff.filter((x) => x.active)
+      const results = await Promise.all(
+        active.map((st) => markStaffDay({ coachId: st.id, date: markDate, status: 'present' })),
+      )
+      const failed = results.filter((r) => !r.ok).length
+      if (failed) toast(`${failed} of ${active.length} could not be saved.`, 'bad')
+      else toast('Everyone marked present.')
+    })()
+    return
+
   }
 
   return (
@@ -331,7 +325,7 @@ export function StaffSheet({
   value: StaffT | 'new' | null
   onClose: () => void
 }) {
-  const { update, toast } = useStore()
+  const { toast, saveStaff } = useStore()
   const isNew = value === 'new'
   const s = isNew ? null : value
 
@@ -354,7 +348,7 @@ export function StaffSheet({
     setActive(s?.active ?? true)
   }
 
-  const save = () => {
+  const save = async () => {
     const trimmed = name.trim()
     if (!trimmed) {
       toast('Enter a name.', 'bad')
@@ -368,30 +362,21 @@ export function StaffSheet({
       toast('That salary looks too large — check the digits.', 'bad')
       return
     }
-    const salaryVal = nonNegativeOrUndef(salary)
-    update((d) => {
-      if (isNew) {
-        d.staff.push({
-          id: uid('stf'),
-          name: trimmed,
-          role: role.trim() || 'Coach',
-          phone: phone.replace(/\s/g, '') || undefined,
-          joinedOn,
-          monthlySalary: salaryVal,
-          active,
-        })
-      } else if (s) {
-        const t = d.staff.find((x) => x.id === s.id)
-        if (t) {
-          t.name = trimmed
-          t.role = role.trim() || 'Coach'
-          t.phone = phone.replace(/\s/g, '') || undefined
-          t.joinedOn = joinedOn
-          t.monthlySalary = salaryVal
-          t.active = active
-        }
-      }
+    /* monthlySalary has nowhere to go on the platform's coaches table
+       and is not used to compute anything, so it is not sent. Payroll is
+       an expense the owner records; inventing a column for it here would
+       be a money rule in a client. */
+    const r = await saveStaff({
+      id: s?.id,
+      name: trimmed,
+      role: role.trim() || 'Coach',
+      phone: phone.replace(/\s/g, '') || undefined,
+      active,
     })
+    if (!r.ok) {
+      toast(r.message, 'bad')
+      return
+    }
     toast(isNew ? 'Staff added.' : 'Staff updated.')
     onClose()
   }

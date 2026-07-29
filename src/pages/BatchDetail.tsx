@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useStore } from '../lib/store'
 import { navigate } from '../lib/router'
 import type { Student } from '../lib/types'
-import { currentMonthKey, inr, initials, ordinal, todayISO, uid } from '../lib/format'
+import { currentMonthKey, inr, initials, ordinal } from '../lib/format'
 import { paidForMonth, studentsOf, unpaidMonthsFor } from '../lib/selectors'
 import { ACADEMY } from '../lib/academy'
 import { Confirm, Empty, Stat } from '../components/ui'
@@ -21,7 +21,7 @@ import {
 } from '../components/icons'
 
 export default function BatchDetail({ id }: { id: string }) {
-  const { data, update, toast } = useStore()
+  const { data, toast, recordFee, removeBatch, saveStudent } = useStore()
   const batch = data.batches.find((b) => b.id === id)
 
   const [editBatch, setEditBatch] = useState(false)
@@ -68,22 +68,20 @@ export default function BatchDetail({ id }: { id: string }) {
   /* Settles this month only — the roster is a this-month view. Anything
      still owed from earlier months stays visible under Reminders, and the
      reminder list re-syncs itself from this payment. */
-  const recordPayment = (s: Student) => {
-    update((d) => {
-      d.transactions.unshift({
-        id: uid('txn'),
-        type: 'revenue',
-        date: todayISO(),
-        forMonth: thisMonth,
-        amount: s.monthlyFee,
-        category: 'Student Fee',
-        source: 'student_fee',
-        studentId: s.id,
-        batchId: s.batchId,
-        note: batch.name,
-        createdAt: new Date().toISOString(),
-      })
-    })
+  const recordPayment = async (s: Student) => {
+    /* record_fee_payment, not an insert. It writes the payment, the
+       period it covers, rolls the renewal forward and closes the
+       reminder — in one transaction. An insert here would record the
+       money and none of the consequences. */
+    if (!s.enrollmentId) {
+      toast('That student is not enrolled in the database yet.', 'bad')
+      return
+    }
+    const res = await recordFee({ enrollmentId: s.enrollmentId, amount: s.monthlyFee })
+    if (!res.ok) {
+      toast(res.message, 'bad')
+      return
+    }
     const stillOwed = unpaidMonthsFor(data, s).filter((m) => m !== thisMonth).length
     toast(
       stillOwed > 0
@@ -297,14 +295,17 @@ export default function BatchDetail({ id }: { id: string }) {
         }
         onCancel={() => setDelBatch(false)}
         onConfirm={() => {
-          update((d) => {
-            const ids = new Set(d.students.filter((s) => s.batchId === batch.id).map((s) => s.id))
-            d.students = d.students.filter((s) => s.batchId !== batch.id)
-            d.reminders = d.reminders.filter((r) => !ids.has(r.studentId))
-            d.batches = d.batches.filter((b) => b.id !== batch.id)
+          /* Deactivated, not deleted. Enrolments and past payments point at
+             this batch, and removing it would strip the meaning from
+             their history. Students stay where they are. */
+          void removeBatch(batch.id).then((r) => {
+            if (!r.ok) {
+              toast(r.message, 'bad')
+              return
+            }
+            toast('Batch closed.')
+            navigate('/batches')
           })
-          toast('Batch deleted.')
-          navigate('/batches')
         }}
       />
 
@@ -315,13 +316,21 @@ export default function BatchDetail({ id }: { id: string }) {
         confirmLabel="Remove"
         onCancel={() => setDelStudent(null)}
         onConfirm={() => {
-          const sid = delStudent!.id
-          update((d) => {
-            d.students = d.students.filter((s) => s.id !== sid)
-            d.reminders = d.reminders.filter((r) => r.studentId !== sid)
+          void saveStudent({
+            memberId: delStudent!.memberId,
+            enrollmentId: delStudent!.enrollmentId,
+            name: delStudent!.name,
+            phone: delStudent!.phone,
+            guardian: delStudent!.guardian,
+            batchId: delStudent!.batchId,
+            joinedOn: delStudent!.joinedOn,
+            feeDueDay: delStudent!.feeDueDay,
+            active: false,
+          }).then((r) => {
+            if (!r.ok) toast(r.message, 'bad')
+            else toast('Student removed.')
+            setDelStudent(null)
           })
-          toast('Student removed.')
-          setDelStudent(null)
         }}
       />
     </main>

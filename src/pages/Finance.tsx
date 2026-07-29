@@ -17,7 +17,6 @@ import {
   monthShort,
   shiftMonth,
   todayISO,
-  uid,
 } from '../lib/format'
 import {
   ATTRIBUTABLE_MONTHS,
@@ -49,7 +48,7 @@ const SOURCE_LABEL: Record<RevenueSource, string> = {
 }
 
 export default function Finance() {
-  const { data, update, toast } = useStore()
+  const { data, toast, removeEntry } = useStore()
   const [month, setMonth] = useState(currentMonthKey())
   const [filter, setFilter] = useState<ListFilter>('all')
   const [adding, setAdding] = useState<TxnType | null>(null)
@@ -340,8 +339,15 @@ export default function Finance() {
         onCancel={() => setDelTxn(null)}
         onConfirm={() => {
           const id = delTxn!.id
-          update((d) => {
-            d.transactions = d.transactions.filter((t) => t.id !== id)
+          /* Payments are voided, not deleted: the money moved, and the
+             record of it moving is what makes a correction auditable.
+             Expenses have no such history, so they go. */
+          void removeEntry(
+            id.startsWith('pay_')
+              ? { kind: 'payment', id: Number(id.slice(4)) }
+              : { kind: 'expense', id: Number(id.slice(4)) },
+          ).then((r) => {
+            if (!r.ok) toast(r.message, 'bad')
           })
           toast('Entry deleted.')
           setDelTxn(null)
@@ -364,7 +370,7 @@ function TxnSheet({
   month: string
   onClose: () => void
 }) {
-  const { data, update, toast } = useStore()
+  const { data, toast, addRevenue, addExpense, recordFee } = useStore()
   const [tab, setTab] = useState<TxnType>('revenue')
   const [source, setSource] = useState<RevenueSource>('court_booking')
   const [bookingMode, setBookingMode] = useState<BookingMode>('daily')
@@ -397,7 +403,7 @@ function TxnSheet({
      but mark which are actually outstanding. */
   const monthChoices = lastMonths(ATTRIBUTABLE_MONTHS)
 
-  const save = () => {
+  const save = async () => {
     const amt = Number(amount)
     if (!Number.isFinite(amt) || amt <= 0) {
       toast('Enter an amount greater than zero.', 'bad')
@@ -407,42 +413,38 @@ function TxnSheet({
       toast('That amount looks too large — check the digits.', 'bad')
       return
     }
-    update((d) => {
-      if (tab === 'revenue') {
-        const student = source === 'student_fee' ? d.students.find((s) => s.id === studentId) : undefined
-        d.transactions.unshift({
-          id: uid('txn'),
-          type: 'revenue',
-          date,
-          amount: amt,
-          category:
-            source === 'student_fee'
-              ? 'Student Fee'
-              : source === 'court_booking'
-                ? 'Court Booking'
-                : source === 'membership'
-                  ? 'Membership'
-                  : 'Other Income',
-          source,
-          forMonth: source === 'student_fee' ? forMonth : undefined,
-          bookingMode: source === 'court_booking' ? bookingMode : undefined,
-          studentId: student?.id,
-          batchId: student?.batchId,
-          note: note.trim() || undefined,
-          createdAt: new Date().toISOString(),
-        })
+    /* A student's fee goes through record_fee_payment, which is the one
+       write path for fees: it sets the period the money covers, rolls
+       the renewal forward and closes the reminder. Everything else is
+       plain revenue or an expense. */
+    let r: { ok: boolean; message: string }
+    if (tab === 'revenue') {
+      if (source === 'student_fee') {
+        const student = data.students.find((s) => s.id === studentId)
+        if (!student?.enrollmentId) {
+          toast('Pick a student who is enrolled in the database.', 'bad')
+          return
+        }
+        r = await recordFee({ enrollmentId: student.enrollmentId, amount: amt, onDate: date, note: note.trim() || undefined })
       } else {
-        d.transactions.unshift({
-          id: uid('txn'),
-          type: 'expense',
-          date,
+        r = await addRevenue({
+          label:
+            source === 'court_booking' ? 'Court Booking'
+              : source === 'membership' ? 'Membership'
+                : 'Other income',
           amount: amt,
-          category,
+          onDate: date,
+          kind: source === 'court_booking' ? 'Court' : source === 'membership' ? 'Membership' : 'Coaching',
           note: note.trim() || undefined,
-          createdAt: new Date().toISOString(),
         })
       }
-    })
+    } else {
+      r = await addExpense({ category, amount: amt, onDate: date, note: note.trim() || undefined })
+    }
+    if (!r.ok) {
+      toast(r.message, 'bad')
+      return
+    }
     toast(tab === 'revenue' ? 'Revenue added.' : 'Expense added.')
     onClose()
   }

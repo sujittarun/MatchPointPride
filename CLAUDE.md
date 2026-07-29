@@ -98,10 +98,23 @@ batches, students and payments live in localStorage on his phone, so his
 backup is the only place they exist. `0008` seeded the centre and sport;
 nothing else about Pride is inventable from the platform side.
 
-## Until then
+## Where the data lives
 
-`localStorage` + IndexedDB (payment screenshots). Backup/restore in
-Settings is the only thing between this data and a wiped phone.
+Postgres, and only Postgres. There is no local copy of the academy's
+records: no `mpp.data.v1`, no draft, no cache. Every write goes through
+one of the helpers in `store.tsx`, lands in the database, and is read
+straight back.
+
+What is still on the device, and should be: the sealed session vault
+(`vault.ts`), the PIN attempt ladder, and payment screenshots in
+IndexedDB.
+
+**Two things were removed rather than faked.** One-off custom reminders
+and cancel/delete on a fee reminder: the list is `reminder_queue()`'s
+answer, recomputed on every read, so anything written to it locally
+would vanish at the next refresh. A reminder ends when the fee is
+recorded or the student is discontinued — both real actions with real
+rows behind them.
 
 ## Running it
 

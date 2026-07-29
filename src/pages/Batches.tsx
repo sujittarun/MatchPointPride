@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useStore } from '../lib/store'
 import { navigate } from '../lib/router'
 import type { Batch, BatchKind } from '../lib/types'
-import { MAX_AMOUNT, inr, nonNegative, nonNegativeOrUndef, uid } from '../lib/format'
+import { MAX_AMOUNT, inr, nonNegative, nonNegativeOrUndef } from '../lib/format'
 import { activeStudentsOf, studentsOf } from '../lib/selectors'
 import { Empty, Sheet, Field } from '../components/ui'
 import { Donut, seriesColor } from '../components/charts'
@@ -30,8 +30,21 @@ const KIND_BADGE: Record<BatchKind, string> = {
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
+/** "4:30 PM – 5:30 PM" -> ["16:30","17:30"]. Blank means all day. */
+function parseSlot(text: string): [string, string] {
+  const m = text.match(/(\d{1,2}):(\d{2})\s*([AP]M)\s*[\u2013-]\s*(\d{1,2}):(\d{2})\s*([AP]M)/i)
+  if (!m) return ['05:00', '23:59']
+  const to24 = (h: string, mm: string, ap: string) => {
+    let hh = parseInt(h, 10)
+    if (/pm/i.test(ap) && hh !== 12) hh += 12
+    if (/am/i.test(ap) && hh === 12) hh = 0
+    return `${String(hh).padStart(2, '0')}:${mm}`
+  }
+  return [to24(m[1], m[2], m[3]), to24(m[4], m[5], m[6])]
+}
+
 export default function Batches() {
-  const { data } = useStore()
+  const { data  } = useStore()
   const [editing, setEditing] = useState<Batch | 'new' | null>(null)
   const [addStudent, setAddStudent] = useState(false)
   const [filter, setFilter] = useState<BatchKind | 'all'>('all')
@@ -224,7 +237,7 @@ export function BatchSheet({
   value: Batch | 'new' | null
   onClose: () => void
 }) {
-  const { update, toast, data } = useStore()
+  const { toast, data, saveBatch } = useStore()
   const isNew = value === 'new'
   const b = isNew ? null : value
 
@@ -258,7 +271,7 @@ export function BatchSheet({
     setNote(b?.note ?? '')
   }
 
-  const save = () => {
+  const save = async () => {
     const trimmed = name.trim()
     if (!trimmed) {
       toast('Give the batch a name.', 'bad')
@@ -277,48 +290,27 @@ export function BatchSheet({
       toast('That UPI ID doesn\u2019t look right — it should read like name@bank.', 'bad')
       return
     }
-    const feeVal = nonNegative(fee)
-    const capVal = nonNegativeOrUndef(capacity)
-    update((d) => {
-      if (isNew) {
-        const usedSlots = new Set(d.batches.map((x) => x.colorSlot))
-        let colorSlot = 1
-        for (let i = 1; i <= 6; i++) {
-          if (!usedSlots.has(i)) {
-            colorSlot = i
-            break
-          }
-          colorSlot = (d.batches.length % 6) + 1
-        }
-        d.batches.push({
-          id: uid('batch'),
-          name: trimmed,
-          kind,
-          slot: slot.trim() || undefined,
-          days: days.length ? days : undefined,
-          fee: feeVal,
-          capacity: capVal,
-          upiId: upi || undefined,
-          upiName: upiName.trim() || undefined,
-          colorSlot,
-          note: note.trim() || undefined,
-          createdAt: new Date().toISOString(),
-        })
-      } else if (b) {
-        const t = d.batches.find((x) => x.id === b.id)
-        if (t) {
-          t.name = trimmed
-          t.kind = kind
-          t.slot = slot.trim() || undefined
-          t.days = days.length ? days : undefined
-          t.fee = feeVal
-          t.capacity = capVal
-          t.upiId = upi || undefined
-          t.upiName = upiName.trim() || undefined
-          t.note = note.trim() || undefined
-        }
-      }
+    /* The fee is not a column on the batch — it is a fee_rules row that
+       resolve_fee ranks. saveBatch writes both, retiring the previous
+       rule rather than editing it, so past months stay explicable. */
+    const DAY_NUM: Record<string, number> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }
+    /* The platform stores start and end times; MPP shows one "4:30 PM –
+       5:30 PM" string. A batch with no slot (open-play membership) takes
+       the venue's hours, because the column is NOT NULL. */
+    const [slotStart, slotEnd] = parseSlot(slot)
+    const r = await saveBatch({
+      id: b?.id,
+      name: trimmed,
+      days: days.map((d) => DAY_NUM[d]).filter(Boolean),
+      startTime: slotStart,
+      endTime: slotEnd,
+      capacity: nonNegativeOrUndef(capacity) ?? null,
+      fee: nonNegative(fee),
     })
+    if (!r.ok) {
+      toast(r.message, 'bad')
+      return
+    }
     toast(isNew ? 'Batch added.' : 'Batch updated.')
     onClose()
   }

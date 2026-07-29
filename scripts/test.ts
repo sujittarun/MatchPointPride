@@ -13,7 +13,7 @@ import {
 } from '../src/lib/selectors'
 import { buildEmptyData, buildSeedData } from '../src/lib/seed'
 import { normalise } from '../src/lib/store'
-import { parseCSV, studentsFromCSV, studentsToCSV, applyImport } from '../src/lib/csv'
+import { parseCSV, studentsFromCSV, studentsToCSV } from '../src/lib/csv'
 import type { AppData } from '../src/lib/types'
 
 let pass = 0
@@ -360,23 +360,17 @@ ok('seed: all amounts positive', seed.transactions.every((t) => t.amount > 0))
   eq('csv: header row', parsed[0][0], 'Name')
   eq('csv: one row per student', parsed.length - 1, seeded.students.length)
 
+  /* The parser is what still exists. It used to hand back a patch for a
+     local draft; now it hands back rows and Settings writes each one to
+     Postgres, so these assert on the parse, not on a mutated document. */
   const fresh: AppData = JSON.parse(JSON.stringify(buildEmptyData()))
   const rep = studentsFromCSV(text, fresh)
-  applyImport(fresh, rep)
-  eq('csv: round trip imports everyone', fresh.students.length, seeded.students.length)
+  eq('csv: round trip parses everyone', rep.rows?.length ?? 0, seeded.students.length)
   eq('csv: nothing skipped on round trip', rep.skipped.length, 0)
   eq('csv: all added, none updated', [rep.added, rep.updated], [seeded.students.length, 0])
 
-  // names with commas survive the trip
   const tricky = seeded.students.find((s) => s.name.includes(' '))!
-  ok('csv: a real name round-trips',
-    fresh.students.some((s) => s.name === tricky.name))
-
-  // --- re-import updates instead of duplicating ---
-  const again = studentsFromCSV(text, fresh)
-  applyImport(fresh, again)
-  eq('csv: re-import does not duplicate', fresh.students.length, seeded.students.length)
-  eq('csv: re-import updates', [again.added, again.updated], [0, seeded.students.length])
+  ok('csv: a real name round-trips', (rep.rows ?? []).some((r) => r.name === tricky.name))
 
   // --- bad input ---
   const empty: AppData = JSON.parse(JSON.stringify(buildEmptyData()))
@@ -394,9 +388,8 @@ ok('seed: all amounts positive', seed.transactions.every((t) => t.amount > 0))
   // minimal row uses batch defaults
   const b0 = empty.batches[0]
   const minimal = studentsFromCSV(`Name,Batch\nAsha,${b0.name}`, empty)
-  applyImport(empty, minimal)
-  const asha = empty.students.find((s) => s.name === 'Asha')!
-  eq('csv: minimal row imported', !!asha, true)
+  const asha = (minimal.rows ?? []).find((r) => r.name === 'Asha')!
+  eq('csv: minimal row parsed', !!asha, true)
   eq('csv: fee defaults to the batch fee', asha.monthlyFee, b0.fee)
   eq('csv: defaults to active', asha.active, true)
   eq('csv: due day defaults to 1', asha.feeDueDay, 1)
@@ -407,8 +400,7 @@ ok('seed: all amounts positive', seed.transactions.every((t) => t.amount > 0))
     `Bela,${b0.name},"₹2,500",99,Inactive, 98765 43210 `,
     empty,
   )
-  applyImport(empty, dirty)
-  const bela = empty.students.find((s) => s.name === 'Bela')!
+  const bela = (dirty.rows ?? []).find((r) => r.name === 'Bela')!
   eq('csv: currency text parsed to number', bela.monthlyFee, 2500)
   eq('csv: out-of-range due day clamped to 31', bela.feeDueDay, 31)
   eq('csv: Inactive status honoured', bela.active, false)
@@ -416,8 +408,7 @@ ok('seed: all amounts positive', seed.transactions.every((t) => t.amount > 0))
 
   // negative fee in a sheet must not become negative data
   const neg = studentsFromCSV(`Name,Batch,Monthly Fee\nCarl,${b0.name},-900`, empty)
-  applyImport(empty, neg)
-  eq('csv: negative fee clamped to 0', empty.students.find((s) => s.name === 'Carl')!.monthlyFee, 0)
+  eq('csv: negative fee clamped to 0', (neg.rows ?? []).find((r) => r.name === 'Carl')!.monthlyFee, 0)
 
   // duplicate rows inside one file
   const dup = studentsFromCSV(`Name,Batch\nDia,${b0.name}\nDia,${b0.name}`, empty)

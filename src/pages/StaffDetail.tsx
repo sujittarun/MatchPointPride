@@ -41,7 +41,7 @@ const STATUSES: Array<{ value: AttendanceStatus; label: string }> = [
 ]
 
 export default function StaffDetail({ id }: { id: string }) {
-  const { data, update, toast } = useStore()
+  const { data, toast, markStaffDay, removeStaff } = useStore()
   const staff = data.staff.find((s) => s.id === id)
 
   const [month, setMonth] = useState(currentMonthKey())
@@ -75,15 +75,15 @@ export default function StaffDetail({ id }: { id: string }) {
 
   const days = workingDays(month, month === currentMonthKey())
   const setStatus = (date: string, status: AttendanceStatus | null) => {
-    const rid = `${staff.id}__${date}`
-    update((d) => {
-      if (status === null) {
-        d.attendance = d.attendance.filter((r) => r.id !== rid)
-        return
-      }
-      const existing = d.attendance.find((r) => r.id === rid)
-      if (existing) existing.status = status
-      else d.attendance.push({ id: rid, staffId: staff.id, date, status })
+    /* "No record" is no longer something a tap can assert: the database
+       stores present or absent, and clearing a day would mean deleting
+       a fact rather than correcting it. Tapping now sets a value. */
+    if (status === null) {
+      setDayEdit(null)
+      return
+    }
+    void markStaffDay({ coachId: staff.id, date, status }).then((r) => {
+      if (!r.ok) toast(r.message, 'bad')
     })
     setDayEdit(null)
   }
@@ -303,15 +303,20 @@ export default function StaffDetail({ id }: { id: string }) {
       <Confirm
         open={confirmDelete}
         title={`Delete ${staff.name}?`}
-        body="Their attendance history is removed too. This cannot be undone."
+        body="They stop appearing on the attendance sheet. Their past days stay on record."
         onCancel={() => setConfirmDelete(false)}
         onConfirm={() => {
-          update((d) => {
-            d.staff = d.staff.filter((s) => s.id !== staff.id)
-            d.attendance = d.attendance.filter((r) => r.staffId !== staff.id)
+          /* Deactivated rather than deleted, and the attendance history
+             stays: it is a record of days worked, and those days
+             happened whether or not the person is still on the staff. */
+          void removeStaff(staff.id).then((r) => {
+            if (!r.ok) {
+              toast(r.message, 'bad')
+              return
+            }
+            toast('Staff member removed.')
+            navigate('/staff')
           })
-          toast('Staff member deleted.')
-          navigate('/staff')
         }}
       />
     </main>

@@ -25,7 +25,7 @@ import {
 } from '../components/icons'
 
 export default function StudentDetail({ id }: { id: string }) {
-  const { data, update, toast } = useStore()
+  const { data, toast, saveStudent } = useStore()
   const p = useMemo(() => studentProfile(data, id), [data, id])
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -311,12 +311,28 @@ export default function StudentDetail({ id }: { id: string }) {
         confirmLabel="Remove"
         onCancel={() => setConfirmDelete(false)}
         onConfirm={() => {
-          update((d) => {
-            d.students = d.students.filter((x) => x.id !== s.id)
-            d.reminders = d.reminders.filter((r) => r.studentId !== s.id)
+          /* Discontinued, not deleted. Their payments and attendance
+             point at them, and a student who vanishes takes the meaning
+             of that history with them. The enrolment leaves
+             reminder_queue on its own. */
+          void saveStudent({
+            memberId: s.memberId,
+            enrollmentId: s.enrollmentId,
+            name: s.name,
+            phone: s.phone,
+            guardian: s.guardian,
+            batchId: s.batchId,
+            joinedOn: s.joinedOn,
+            feeDueDay: s.feeDueDay,
+            active: false,
+          }).then((r) => {
+            if (!r.ok) {
+              toast(r.message, 'bad')
+              return
+            }
+            toast('Student removed.')
+            navigate(batch ? `/batches/${batch.id}` : '/batches')
           })
-          toast('Student removed.')
-          navigate(batch ? `/batches/${batch.id}` : '/batches')
         }}
       />
     </main>

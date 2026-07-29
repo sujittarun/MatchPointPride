@@ -99,6 +99,26 @@ export interface ImportReport {
   updated: number
   skipped: Array<{ row: number; name: string; why: string }>
   message: string
+  /**
+   * The rows that parsed cleanly, for the caller to write.
+   *
+   * The parser used to hand back a patch for a local draft. Nothing is
+   * drafted any more — each row becomes an insert against Postgres — so
+   * it hands back the rows instead and lets the caller decide what a
+   * failed one means.
+   */
+  rows?: Array<{
+    id?: string
+    name: string
+    batchId: string
+    phone: string
+    guardian?: string
+    joinedOn: string
+    feeDueDay: number
+    monthlyFee: number
+    active: boolean
+    note?: string
+  }>
 }
 
 /**
@@ -216,23 +236,24 @@ export function studentsFromCSV(text: string, data: AppData): ImportReport {
         ? 'Nothing could be imported — check the batch names match your batches exactly.'
         : `${added.length} added, ${updates.length} updated` +
           (skipped.length ? `, ${skipped.length} skipped.` : '.'),
-    // carried on the object so the caller can apply it in one update()
-    ...({ _added: added, _updates: updates } as object),
+    rows: added.map((st) => ({
+      name: st.name,
+      batchId: st.batchId,
+      phone: st.phone,
+      guardian: st.guardian,
+      joinedOn: st.joinedOn,
+      feeDueDay: st.feeDueDay,
+      monthlyFee: st.monthlyFee,
+      active: st.active,
+      note: st.note,
+    })),
   } as ImportReport
 }
 
-/** Applies what studentsFromCSV worked out. Kept separate so parsing stays pure. */
-export function applyImport(draft: AppData, report: ImportReport) {
-  const r = report as ImportReport & {
-    _added?: Student[]
-    _updates?: Array<{ id: string; patch: Partial<Student> }>
-  }
-  for (const s of r._added ?? []) draft.students.push(s)
-  for (const u of r._updates ?? []) {
-    const t = draft.students.find((s) => s.id === u.id)
-    if (t) Object.assign(t, u.patch)
-  }
-}
+/* applyImport is gone. It merged parsed rows into a local draft, and
+   there is no draft any more — Settings writes each row through
+   saveStudent, so a bad row fails alone instead of taking the file with
+   it, and the count reported is what actually landed. */
 
 export function downloadText(filename: string, text: string, mime: string) {
   const blob = new Blob([text], { type: mime })

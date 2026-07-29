@@ -4,7 +4,6 @@ import { navigate } from '../lib/router'
 import { todayISO } from '../lib/format'
 import { ACADEMY } from '../lib/academy'
 import {
-  applyImport,
   downloadText,
   studentsFromCSV,
   studentsToCSV,
@@ -21,7 +20,7 @@ import {
 
 export default function Settings() {
   const {
-    data, exportJSON, importJSON, update, resetToDemo, startFresh, toast,
+    data, exportJSON, importJSON, resetToDemo, startFresh, toast, saveStudent,
   } = useStore()
 
   const backupRef = useRef<HTMLInputElement | null>(null)
@@ -54,8 +53,34 @@ export default function Settings() {
     const reader = new FileReader()
     reader.onload = () => {
       const res = studentsFromCSV(String(reader.result), data)
-      if (res.ok) update((d) => applyImport(d, res))
       setReport(res)
+      if (!res.ok) return
+      /* Each row is a real insert, one at a time, so a bad row fails on
+         its own instead of taking the file down with it. The count the
+         owner sees is what actually landed, not what was parsed. */
+      void (async () => {
+        let ok = 0
+        for (const st of res.rows ?? []) {
+          const batch = data.batches.find((b) => b.id === st.batchId)
+          if (!batch) continue
+          const r = await saveStudent({
+            name: st.name,
+            phone: st.phone,
+            guardian: st.guardian,
+            batchId: batch.id,
+            joinedOn: st.joinedOn,
+            feeDueDay: st.feeDueDay,
+            active: true,
+          })
+          if (r.ok) ok++
+        }
+        toast(
+          ok === (res.rows?.length ?? 0)
+            ? `${ok} student${ok === 1 ? '' : 's'} imported.`
+            : `${ok} of ${res.rows?.length ?? 0} imported — the rest were rejected.`,
+          ok === (res.rows?.length ?? 0) ? 'good' : 'bad',
+        )
+      })()
     }
     reader.readAsText(file)
     e.target.value = ''

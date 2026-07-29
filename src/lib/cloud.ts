@@ -255,6 +255,32 @@ function select<T>(table: string, query = ''): Promise<T[]> {
   return request('GET', `/${table}?tenant_id=eq.${TENANT}${sep}${query}`) as Promise<T[]>
 }
 
+/** POST with merge-duplicates, for tables with a natural key. */
+async function requestUpsert(path: string, body: unknown): Promise<void> {
+  if (!session) throw new CloudError('Not signed in', 401)
+  if (session.expires_at - Date.now() < 60_000) await refresh()
+  const res = await fetch(`${PROJECT}/rest/v1${path}`, {
+    method: 'POST',
+    headers: {
+      apikey: ANON,
+      Authorization: `Bearer ${session?.access_token ?? ''}`,
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const t = await res.text()
+    let msg = t
+    try {
+      msg = JSON.parse(t).message || t
+    } catch {
+      /* raw body is the best available */
+    }
+    throw new CloudError(msg, res.status)
+  }
+}
+
 function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
   return request('POST', `/rpc/${fn}`, args) as Promise<T>
 }
@@ -474,6 +500,216 @@ export async function updateStudent(a: {
     ...(a.active ? {} : { discontinued_on: new Date().toISOString().slice(0, 10) }),
   })
   track(a.active ? 'student_updated' : 'student_discontinued', {})
+}
+
+/* ---------------- batches ---------------- */
+
+/**
+ * A batch and the fee rule that prices it.
+ *
+ * MPP thinks of a batch as having a fee. The platform separates them:
+ * the batch is a timetable slot, and what it costs is a row in
+ * fee_rules that resolve_fee ranks against member overrides and centre
+ * defaults. Changing "the fee" therefore updates the rule, never a
+ * column on the batch — otherwise resolve_fee would keep returning the
+ * old number and the two would disagree.
+ */
+export async function saveBatch(a: {
+  id?: number
+  code?: string
+  name: string
+  centreId: number
+  days: number[]
+  startTime: string
+  endTime: string
+  capacity?: number | null
+  fee: number
+  active?: boolean
+}): Promise<number> {
+  const body = {
+    tenant_id: TENANT,
+    centre_id: a.centreId,
+    name: a.name,
+    sport: 'badminton',
+    days: a.days,
+    start_time: a.startTime,
+    end_time: a.endTime,
+    capacity: a.capacity ?? null,
+    active: a.active ?? true,
+  }
+
+  let batchId = a.id
+  if (batchId) {
+    await request('PATCH', `/batches?id=eq.${batchId}&tenant_id=eq.${TENANT}`, body)
+  } else {
+    const code =
+      (a.code || a.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) ||
+      `batch-${Date.now()}`
+    const rows = (await request('POST', '/batches', { ...body, code, sort: 99 })) as Array<{ id: number }>
+    batchId = rows?.[0]?.id
+    if (!batchId) throw new CloudError('The batch was not created.', 500)
+  }
+
+  // Retire any previous rule for this batch rather than editing it, so
+  // a fee change does not silently rewrite what past months were priced
+  // at. effective_to is what makes the old number still explicable.
+  await request(
+    'PATCH',
+    `/fee_rules?tenant_id=eq.${TENANT}&batch_id=eq.${batchId}&active=is.true`,
+    { active: false, effective_to: new Date().toISOString().slice(0, 10) },
+  ).catch(() => {})
+
+  await request('POST', '/fee_rules', {
+    tenant_id: TENANT,
+    label: a.name,
+    centre_id: a.centreId,
+    sport: 'badminton',
+    batch_id: batchId,
+    monthly_amount: a.fee,
+    plan_amounts: {},
+    admission_fee: 0,
+    effective_from: new Date().toISOString().slice(0, 10),
+    active: true,
+  })
+
+  track(a.id ? 'batch_updated' : 'batch_added', { batch: batchId })
+  return batchId
+}
+
+export async function deleteBatch(batchId: number): Promise<void> {
+  // Deactivated, not deleted: enrolments and past payments point at it,
+  // and a batch that vanishes takes their history's meaning with it.
+  await request('PATCH', `/batches?id=eq.${batchId}&tenant_id=eq.${TENANT}`, { active: false })
+  track('batch_removed', { batch: batchId })
+}
+
+/* ---------------- money ---------------- */
+
+/** Revenue that is not a student's fee — court hire, memberships, sundry. */
+export async function addRevenue(a: {
+  label: string
+  amount: number
+  onDate: string
+  kind: 'Court' | 'Membership' | 'Coaching'
+  note?: string
+}): Promise<void> {
+  await request('POST', '/payments', {
+    tenant_id: TENANT,
+    name: a.label,
+    type: a.kind,
+    amount: Math.round(a.amount),
+    mode: 'UPI',
+    on_date: a.onDate,
+    status: 'paid',
+    note: a.note ?? null,
+  })
+  track('payment_recorded', { amount: Math.round(a.amount), mode: a.kind })
+}
+
+export async function addExpense(a: {
+  category: string
+  amount: number
+  onDate: string
+  note?: string
+}): Promise<void> {
+  await request('POST', '/expenses', {
+    tenant_id: TENANT,
+    category: a.category,
+    amount: Math.round(a.amount),
+    mode: 'UPI',
+    on_date: a.onDate,
+    detail: a.note ?? null,
+  })
+  track('expense_recorded', { amount: Math.round(a.amount), category: a.category })
+}
+
+/**
+ * Record that a reminder actually went out.
+ *
+ * log_manual_reminder already exists for this — it writes the
+ * reminder_events row that reminder_queue reads back as `already_sent`
+ * and `last_sent_at`. Without it the queue has no idea the owner has
+ * chased anyone, and would show the same student as un-chased tomorrow.
+ */
+export async function logReminderSent(a: {
+  enrollmentId: number
+  stage: string
+  amount: number | null
+  phone: string | null
+  body: string
+  channel: 'whatsapp' | 'sms' | 'call'
+}): Promise<void> {
+  await rpc('log_manual_reminder', {
+    p_tenant: TENANT,
+    p_enrollment: a.enrollmentId,
+    p_stage: a.stage,
+    p_amount: a.amount,
+    p_phone: a.phone,
+    p_body: a.body,
+    p_channel: a.channel,
+    p_by: currentSession()?.email ?? 'owner',
+  })
+  track('reminder_sent', { channel: a.channel })
+}
+
+/** Reverse a payment. Never a delete — the money moved, and the record
+    of it moving is what makes a correction auditable. */
+export async function voidPaymentById(paymentId: number, reason?: string): Promise<void> {
+  await voidPayment(paymentId, reason)
+  track('payment_voided', {})
+}
+
+export async function deleteExpense(id: number): Promise<void> {
+  await request('DELETE', `/expenses?id=eq.${id}&tenant_id=eq.${TENANT}`)
+  track('expense_removed', {})
+}
+
+/* ---------------- staff ---------------- */
+
+export async function saveStaff(a: {
+  id?: number
+  name: string
+  role: string
+  phone?: string
+  active?: boolean
+}): Promise<void> {
+  const body = {
+    tenant_id: TENANT,
+    name: a.name,
+    role: a.role,
+    phone: a.phone || null,
+    active: a.active ?? true,
+  }
+  if (a.id) await request('PATCH', `/coaches?id=eq.${a.id}&tenant_id=eq.${TENANT}`, body)
+  else await request('POST', '/coaches', body)
+  track(a.id ? 'staff_updated' : 'staff_added', {})
+}
+
+export async function deleteStaff(id: number): Promise<void> {
+  await request('PATCH', `/coaches?id=eq.${id}&tenant_id=eq.${TENANT}`, { active: false })
+  track('staff_removed', {})
+}
+
+/**
+ * Mark a staff member present or absent.
+ *
+ * attendance has one row per person per day, so a second tap on the
+ * same day is an update, not an insert — a plain POST 409s. Sent as an
+ * upsert via Prefer: resolution=merge-duplicates.
+ */
+export async function markStaffDay(a: {
+  coachId: string
+  date: string
+  status: AttendanceStatus
+}): Promise<void> {
+  await requestUpsert('/attendance', {
+    tenant_id: TENANT,
+    date: a.date,
+    kind: 'staff',
+    person_id: String(a.coachId),
+    present: a.status === 'present',
+  })
+  track('attendance_marked', { present: a.status === 'present' })
 }
 
 /**

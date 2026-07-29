@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useStore } from '../lib/store'
 import type { Reminder } from '../lib/types'
-import { currentMonthKey, inr, monthLabel, todayISO, uid } from '../lib/format'
-import { batchById, monthsPhrase, studentById } from '../lib/selectors'
+import { currentMonthKey, inr } from '../lib/format'
+import { monthsPhrase, studentById } from '../lib/selectors'
 import { getImage, putImage } from '../lib/images'
 import { Sheet } from './ui'
 import {
@@ -133,7 +133,7 @@ export function ConfirmPayment({
   reminder: Reminder | null
   onClose: () => void
 }) {
-  const { data, update, toast } = useStore()
+  const { data, toast, recordFee } = useStore()
   const fileRef = useRef<HTMLInputElement | null>(null)
 
   const [imageId, setImageId] = useState<string | null>(null)
@@ -152,9 +152,11 @@ export function ConfirmPayment({
   if (!reminder) return null
 
   const student = studentById(data, reminder.studentId)
-  const batch = batchById(data, student?.batchId)
   const months = reminder.months?.length ? reminder.months : [currentMonthKey()]
-  const perMonth = student?.monthlyFee ?? Math.round((reminder.amount ?? 0) / months.length)
+  /* The amount comes from reminder_queue, which already applied the fee
+     chain and the plan. Recomputing it from monthlyFee x months would be
+     a second opinion on a number the database has already given. */
+  const total = reminder.amount ?? student?.monthlyFee ?? 0
 
   const attach = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -174,43 +176,25 @@ export function ConfirmPayment({
 
   const evidenced = imageId !== null || method !== null
 
-  const confirm = () => {
-    const now = new Date().toISOString()
-    update((d) => {
-      const r = d.reminders.find((x) => x.id === reminder.id)
-      if (r) {
-        r.status = 'paid'
-        r.awaitingProof = false
-        if (imageId) r.proofImageId = imageId
-        r.history.push({
-          at: now,
-          action: 'paid',
-          imageId: imageId ?? undefined,
-          note: imageId
-            ? months.length > 1
-              ? `Screenshot received · cleared ${months.length} months`
-              : 'Screenshot received'
-            : METHODS.find((m) => m.value === method)?.label,
-        })
-      }
-      for (const m of months) {
-        d.transactions.unshift({
-          id: uid('txn'),
-          type: 'revenue',
-          date: todayISO(),
-          forMonth: m,
-          amount: perMonth,
-          category: 'Student Fee',
-          source: 'student_fee',
-          studentId: reminder.studentId,
-          batchId: student?.batchId,
-          note: `${batch?.name ?? ''} — ${monthLabel(m)}`.trim(),
-          proofImageId: imageId ?? undefined,
-          verifiedBy: imageId ? 'screenshot' : (method ?? undefined),
-          createdAt: now,
-        })
-      }
+  const confirm = async () => {
+    /* record_fee_payment does all of it in one transaction: writes the
+       payment, sets the months it covers, rolls the renewal forward and
+       closes the reminder. The reminder is not marked paid here because
+       it is not stored here — it disappears from reminder_queue on its
+       own once the money is recorded. */
+    if (!student?.enrollmentId) {
+      toast('That student is not enrolled in the database yet.', 'bad')
+      return
+    }
+    const res = await recordFee({
+      enrollmentId: student.enrollmentId,
+      amount: total,
+      note: imageId ? 'screenshot attached' : (method ?? undefined),
     })
+    if (!res.ok) {
+      toast(res.message, 'bad')
+      return
+    }
     toast(
       months.length > 1
         ? `${months.length} months cleared and added to Finance.`
@@ -222,17 +206,11 @@ export function ConfirmPayment({
   /* Parent says they've paid but nothing has arrived — keep it open and
      flag it, rather than either confirming blind or losing the claim. */
   const awaitProof = () => {
-    update((d) => {
-      const r = d.reminders.find((x) => x.id === reminder.id)
-      if (!r) return
-      r.awaitingProof = true
-      r.history.push({
-        at: new Date().toISOString(),
-        action: 'claimed',
-        note: 'Parent says paid — screenshot not received yet',
-      })
-    })
-    toast('Marked as awaiting proof. It stays in the open list.')
+    /* "Parent says paid, no screenshot yet" is a note about a
+       conversation, not a fact about money, and the platform has
+       nowhere to put it. Left unrecorded rather than written somewhere
+       it would vanish on the next refresh. */
+    toast('Leave it open and confirm once the screenshot arrives.', 'bad')
     onClose()
   }
 

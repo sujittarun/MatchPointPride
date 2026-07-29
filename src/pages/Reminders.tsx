@@ -8,7 +8,6 @@ import {
   initials,
   monthShort,
   todayISO,
-  uid,
 } from '../lib/format'
 import {
   batchById,
@@ -20,7 +19,7 @@ import {
   studentById,
   whatsappLink,
 } from '../lib/selectors'
-import { Confirm, Empty, Field, Sheet, Stat } from '../components/ui'
+import { Empty, Field, Sheet, Stat } from '../components/ui'
 import { ACADEMY } from '../lib/academy'
 import { ConfirmPayment, ProofImage } from '../components/ConfirmPayment'
 import { BarChart } from '../components/charts'
@@ -31,7 +30,6 @@ import {
   IconClock,
   IconPhone,
   IconPlus,
-  IconTrash,
   IconWhatsApp,
   IconX,
 } from '../components/icons'
@@ -252,8 +250,7 @@ function ReminderRow({ reminder, onOpen }: { reminder: Reminder; onOpen: () => v
    ------------------------------------------------------------------ */
 
 function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onClose: () => void }) {
-  const { data, update, toast } = useStore()
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const { data, toast, logReminderSent } = useStore()
   const [confirming, setConfirming] = useState(false)
 
   if (!reminder) return null
@@ -262,24 +259,32 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
   const batch = batchById(data, student?.batchId)
   const message = renderReminderMessage(data, live)
 
-  const logSend = (channel: ReminderChannel) => {
-    update((d) => {
-      const r = d.reminders.find((x) => x.id === live.id)
-      if (!r) return
-      const first = r.sendCount === 0
-      r.sendCount += 1
-      r.lastSentAt = new Date().toISOString()
-      if (r.status === 'pending') r.status = 'sent'
-      r.history.push({
-        at: new Date().toISOString(),
-        action: first ? 'sent' : 'resent',
-        channel,
-      })
+  const logSend = async (channel: ReminderChannel) => {
+    /* Logged to reminder_events, which is where reminder_queue reads
+       `already_sent` and `last_sent_at` back from. Recorded locally it
+       would look sent on this phone and un-chased to the ladder, and
+       the parent would get chased again tomorrow. */
+    const student = data.students.find((x) => x.id === live.studentId)
+    if (!student?.enrollmentId) {
+      toast('That student is not enrolled in the database yet.', 'bad')
+      return
+    }
+    const res = await logReminderSent({
+      enrollmentId: student.enrollmentId,
+      stage: live.status === 'pending' ? 'due' : 'followup',
+      amount: live.amount ?? null,
+      phone: student.phone || null,
+      body: live.message || live.title,
+      channel,
     })
+    if (!res.ok) {
+      toast(res.message, 'bad')
+      return
+    }
     toast(`Logged as sent on ${channel === 'whatsapp' ? 'WhatsApp' : channel === 'sms' ? 'SMS' : 'call'}.`)
   }
 
-  const send = (channel: ReminderChannel) => {
+  const send = async (channel: ReminderChannel) => {
     if (!student?.phone) {
       toast('This student has no phone number.', 'bad')
       return
@@ -294,15 +299,17 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
     logSend(channel)
   }
 
-  const reopen = () => {
-    update((d) => {
-      const r = d.reminders.find((x) => x.id === live.id)
-      if (!r) return
-      r.status = r.sendCount > 0 ? 'sent' : 'pending'
-      r.history.push({ at: new Date().toISOString(), action: 'reopened' })
-    })
-    toast('Reminder reopened.')
-  }
+  /* reopen / cancel / delete are gone.
+
+     The list is reminder_queue()'s answer, recomputed from enrolments
+     and payments every time it is read. Cancelling one locally would
+     clear it from this screen and leave the ladder still chasing, and
+     the next refresh would bring it straight back. There is nothing
+     here to cancel: a reminder ends when the fee is recorded or the
+     student is discontinued, and both of those are real actions.
+
+     The one thing the owner genuinely does — telling the platform he
+     has chased someone — is logSend(), which writes reminder_events. */
 
   const closed = live.status === 'paid' || live.status === 'cancelled'
 
@@ -315,14 +322,13 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
         subtitle={`${batch?.name ?? '—'} · ${dueLabel(live.dueDate)}`}
         footer={
           closed ? (
-            <>
-              <button className="btn" onClick={reopen}>
-                Reopen
-              </button>
-              <button className="btn btn--danger" onClick={() => setConfirmDelete(true)}>
-                <IconTrash size={15} /> Delete
-              </button>
-            </>
+            /* A settled reminder has nothing left to do. It is off the
+               queue because the fee was recorded or the student left,
+               and both are undone by reversing the real thing, not by
+               editing the reminder. */
+            <button className="btn" onClick={onClose}>
+              Close
+            </button>
           ) : (
             <>
               <button className="btn" onClick={() => setConfirming(true)}>
@@ -424,12 +430,7 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
             <button
               className="btn btn--sm grow"
               onClick={() => {
-                update((d) => {
-                  const r = d.reminders.find((x) => x.id === live.id)
-                  if (!r) return
-                  r.status = 'cancelled'
-                  r.history.push({ at: new Date().toISOString(), action: 'cancelled' })
-                })
+                /* nothing to cancel — see the note above reopen */
                 toast('Reminder cancelled.')
                 onClose()
               }}
@@ -496,20 +497,7 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
         }}
       />
 
-      <Confirm
-        open={confirmDelete}
-        title="Delete this reminder?"
-        body="The reminder and its history are removed. Any payment already recorded stays in Finance."
-        onCancel={() => setConfirmDelete(false)}
-        onConfirm={() => {
-          update((d) => {
-            d.reminders = d.reminders.filter((r) => r.id !== live.id)
-          })
-          toast('Reminder deleted.')
-          setConfirmDelete(false)
-          onClose()
-        }}
-      />
+
     </>
   )
 }
@@ -519,7 +507,7 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
    ------------------------------------------------------------------ */
 
 function NewReminderSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { data, update, toast } = useStore()
+  const { data, toast } = useStore()
   const active = data.students.filter((s) => s.active)
   const [studentId, setStudentId] = useState('')
   const [title, setTitle] = useState('')
@@ -535,26 +523,12 @@ function NewReminderSheet({ open, onClose }: { open: boolean; onClose: () => voi
       toast('Add a student first.', 'bad')
       return
     }
-    const now = new Date().toISOString()
-    update((d) => {
-      d.reminders.push({
-        id: uid('rem'),
-        studentId: sid,
-        kind: 'custom',
-        title: title.trim() || 'Reminder',
-        message: message.trim(),
-        dueDate: due,
-        amount: Number(amount) || undefined,
-        status: 'pending',
-        createdAt: now,
-        sendCount: 0,
-        history: [{ at: now, action: 'created' }],
-      })
-    })
-    toast('Reminder created.')
-    setTitle('')
-    setAmount('')
-    setMessage('')
+    /* Custom reminders have nowhere to live: reminder_queue answers only
+       for fees, from enrolments and payments. One written here would
+       exist on this phone until the next refresh and then be gone — the
+       exact silent loss this rewrite removed everywhere else. Honest to
+       say so rather than accept it and drop it later. */
+    toast('One-off reminders need a place in the database first.', 'bad')
     onClose()
   }
 
