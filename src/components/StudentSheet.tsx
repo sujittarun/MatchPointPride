@@ -3,7 +3,6 @@ import { useStore } from '../lib/store'
 import type { Student } from '../lib/types'
 import {
   MAX_AMOUNT,
-  inr,
   clampDay,
   dateLabelFull,
   nonNegative,
@@ -314,11 +313,7 @@ export function StudentSheet({
 
         <Field
           label="Monthly fee (₹)"
-          hint={
-            inheritedFee
-              ? `${batchName}'s rate. Change it only for this student.`
-              : `Just for this student — ${batchName} stays at ${inr(feeOf(batch) ?? 0)}.`
-          }
+          hint={inheritedFee ? `${batchName} rate` : 'Just this student'}
         >
           <input
             className={`input${inheritedFee ? ' input--inherited' : ''}`}
@@ -331,14 +326,32 @@ export function StudentSheet({
           />
         </Field>
 
+        {(isNew || rejoining) && (
+          <Field
+            label="Paid now (₹)"
+            hint={nonNegative(paidNow) > 0 ? 'Recorded straight away' : 'Shows on Home until paid'}
+          >
+            <input
+              className={`input${nonNegative(paidNow) > 0 ? ' input--live' : ''}`}
+              type="number"
+              inputMode="numeric"
+              min={0}
+              value={paidNow}
+              onChange={(e) => setPaidNow(e.target.value)}
+              placeholder="0"
+            />
+          </Field>
+        )}
+
         <Field
           label="Fee due on"
+          span={isNew || rejoining}
           hint={
             !dueDay.trim()
-              ? 'Day of the month the fee is due. Reminders are dated from this.'
+              ? 'Day of the month, every month'
               : clampDay(dueDay) > 28
-                ? `The ${ordinal(clampDay(dueDay))} of every month — the last day in shorter months.`
-                : `The ${ordinal(clampDay(dueDay))} of every month. Reminders are dated from this.`
+                ? `The ${ordinal(clampDay(dueDay))} — or the last day in shorter months`
+                : `The ${ordinal(clampDay(dueDay))} of every month`
           }
         >
           <input
@@ -351,36 +364,6 @@ export function StudentSheet({
             onChange={(e) => setDueDay(e.target.value)}
           />
         </Field>
-
-        {(isNew || rejoining) && (
-          <>
-            <div
-              className="t-label"
-              style={{ gridColumn: '1 / -1', marginTop: 4, paddingTop: 12, borderTop: '1px solid var(--line)' }}
-            >
-              Money today
-            </div>
-            <Field
-              label="Paid now (₹)"
-              hint={
-                nonNegative(paidNow) > 0
-                  ? `Recorded straight away. Their next fee is then a month on.`
-                  : 'Nothing taken today — a normal thing to record. They show on Home as not paid yet until you Mark paid.'
-              }
-              span
-            >
-              <input
-                className={`input${nonNegative(paidNow) > 0 ? ' input--live' : ''}`}
-                type="number"
-                inputMode="numeric"
-                min={0}
-                value={paidNow}
-                onChange={(e) => setPaidNow(e.target.value)}
-                placeholder="0"
-              />
-            </Field>
-          </>
-        )}
 
         <Field label="Joined on" span>
           <input
