@@ -19,7 +19,7 @@
    ============================================================ */
 
 import type { AttendanceStatus } from './types'
-import { nextDueDate } from './format'
+import { firstDueDate, nextDueDate } from './format'
 
 const PROJECT = 'https://ugsklcipzyiogxynshnh.supabase.co'
 // Public by design — it is in every tenant's front end. RLS is the
@@ -460,9 +460,10 @@ export async function addStudent(a: {
     plan_months: 1,
     custom_amount: a.customFee ?? null,
     joined_on: a.joinedOn,
-    // Anchored to the joining date, not to today: a student entered
-    // with a past start owes from that date, not from next month.
-    renewal_on: nextDueDate(a.feeDueDay, a.joinedOn),
+    // Anchored to the joining date, not to today — and skipping a
+    // billing day that lands within a week of it, so nobody is asked
+    // for a month's fee three days after signing up.
+    renewal_on: firstDueDate(a.feeDueDay, a.joinedOn),
     status: 'active',
   })) as Array<{ id: number }>
   const enrollmentId = enrolments?.[0]?.id
@@ -578,7 +579,7 @@ export async function reenroll(a: {
     p_batch: a.batchId,
     p_sport: 'badminton',
     p_joined_on: a.joinedOn ?? null,
-    p_renewal_on: nextDueDate(a.feeDueDay, a.joinedOn),
+    p_renewal_on: firstDueDate(a.feeDueDay, a.joinedOn ?? new Date().toISOString().slice(0, 10)),
     p_plan_months: 1,
     p_custom_amount: a.customFee ?? null,
   })

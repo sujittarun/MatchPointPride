@@ -3,7 +3,7 @@
 import {
   addDays, currentMonthKey, dateLabelFull, daysBetween, daysInMonth, dueLabel,
   clampDay, fromISO, inr, initials, isSunday, lastMonths, monthDates, monthLabel,
-  dueDateFor, nextDueDate, ordinal, shiftMonth, toISO, todayISO, uid, weekday,
+  dueDateFor, firstDueDate, nextDueDate, ordinal, shiftMonth, toISO, todayISO, uid, weekday,
 } from '../src/lib/format'
 import {
   collectionRate, dashboard, expenseByCategory, moneyByMonth, monthTotals,
@@ -557,6 +557,28 @@ eq('a return dated in the future bills from the future date',
    nextDueDate(10, '2026-09-05'), '2026-09-10')
 ok('a backdated return lands in the past, so the ladder can see it',
    nextDueDate(27, '2026-06-15') < '2026-07-29')
+
+/* The FIRST fee is not simply the next billing day.
+   Register someone on the 29th with a fee day of the 1st and the next
+   one is three days away: a full month asked for before the child has
+   had a second session, and a heads-up the day after signing up. A
+   billing day inside a week of joining is skipped. */
+eq('joined the 29th, fee day the 1st — waits for September, not August',
+   firstDueDate(1, '2026-07-29'), '2026-09-01')
+eq('three clear weeks is plenty of notice, so it stands',
+   firstDueDate(1, '2026-07-05'), '2026-08-01')
+eq('joining on your own fee day does not bill you that same day',
+   firstDueDate(5, '2026-08-05'), '2026-09-05')
+eq('a week is the line, and a week is enough',
+   firstDueDate(8, '2026-08-01'), '2026-08-08')
+eq('six days is not', firstDueDate(7, '2026-08-01'), '2026-09-07')
+eq('skipping still clamps in a short month', firstDueDate(31, '2026-01-28'), '2026-02-28')
+ok('no first fee ever lands sooner than a week after joining',
+   ['2026-01-09','2026-02-20','2026-03-31','2026-07-29','2026-11-27'].every(function (j) {
+     return [1, 5, 15, 28, 31].every(function (d) {
+       return daysBetween(j, firstDueDate(d, j)) >= 7
+     })
+   }))
 
 /* Moving an existing student's billing day.
    Anchored to what they currently owe, never to today, so correcting a

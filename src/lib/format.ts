@@ -222,6 +222,31 @@ export function clampDay(v: string | number): number {
  * A student billed on the 1st was stored as due on the 31st of the
  * month before.
  */
+/**
+ * How close the next billing day may fall to the day someone joins
+ * before it is skipped. Under a week is not a fee, it is an ambush.
+ */
+export const FIRST_FEE_MIN_GAP = 7
+
+/**
+ * The first fee for someone joining or rejoining today.
+ *
+ * Not simply the next billing day. Register a student on the 29th with
+ * a fee day of the 1st and the next one is 3 days away — so the parent
+ * is asked for a full month before their child has had a second
+ * session, and gets a heads-up the day after signing up. The whole
+ * month is skipped instead: they settle up with you however you settle
+ * up, and the app starts chasing at the following billing day.
+ *
+ * The renewal after that is `record_fee_payment`'s business and steps a
+ * clean month at a time — this only decides where the cycle starts.
+ */
+export function firstDueDate(feeDay: number, joinedOn: string): string {
+  const first = nextDueDate(feeDay, joinedOn)
+  if (daysBetween(joinedOn, first) >= FIRST_FEE_MIN_GAP) return first
+  return nextDueDate(feeDay, addDays(first, 1))
+}
+
 export function nextDueDate(feeDay: number, from = todayISO()): string {
   const sameMonth = dueDateFor(from.slice(0, 7), feeDay)
   // On the day itself the fee is due that day, not a month later.
