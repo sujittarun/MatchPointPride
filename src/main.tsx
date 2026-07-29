@@ -4,9 +4,10 @@ import './styles/global.css'
 import App from './App'
 import { StoreProvider } from './lib/store'
 import ErrorBoundary from './components/ErrorBoundary'
-import { installErrorReporting } from './lib/telemetry'
+import { installErrorReporting, trackOpen } from './lib/telemetry'
 
 installErrorReporting()
+trackOpen()
 
 // The boundary sits outside StoreProvider on purpose: a crash while
 // reading or migrating stored data is exactly the case where the owner

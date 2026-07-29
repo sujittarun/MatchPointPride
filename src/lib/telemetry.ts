@@ -82,34 +82,17 @@ export type ErrorReport = {
   kind?: 'crash' | 'operation'
 }
 
-export function reportError(e: ErrorReport): void {
+/** One POST to the platform's event sink. Never awaited, never throws. */
+function post(name: string, props: Record<string, unknown>): void {
   try {
-    if (sent >= MAX_REPORTS) return
-    const msg = String(e.msg || '').slice(0, 200)
-    if (!msg || seen.has(msg)) return
-    seen.add(msg)
-    sent++
-
     const body = JSON.stringify({
       tenant_id: TENANT,
-      name: 'client_error',
+      name,
       session_id: sessionId(),
       // hash routing, so the route is the meaningful part
       page: (location.hash || '#/').slice(0, 60),
-      props: {
-        msg,
-        src: e.src ? String(e.src).slice(0, 120) : null,
-        stack: e.stack ? String(e.stack).slice(0, 300) : null,
-        kind: e.kind ?? 'crash',
-        ver: VER,
-        ua: device(),
-        vw: viewport(),
-        role: 'owner', // single-operator app; there is no other role
-      },
+      props,
     })
-
-    // Not awaited, and not allowed to reject — reporting a crash must
-    // never itself crash, and must not delay the fallback UI.
     void fetch(`${PROJECT}/rest/v1/events`, {
       method: 'POST',
       headers: {
@@ -121,6 +104,45 @@ export function reportError(e: ErrorReport): void {
       body,
       keepalive: true, // survives the tab closing straight after the throw
     }).catch(() => {})
+  } catch {
+    /* nothing about telemetry is worth breaking the app for */
+  }
+}
+
+/**
+ * One ping per app open.
+ *
+ * Not vanity metrics. Academy Manager derives a tenant's status from the
+ * newest event it has ever seen — no events at all reads as "Onboarding"
+ * forever, however live the academy actually is. Every other tenant on
+ * the platform sends this; MPP did not, so it sat at Onboarding with
+ * nothing wrong with it.
+ *
+ * It also makes silence meaningful: if this stops arriving, the owner
+ * has stopped opening the app, and that is worth knowing.
+ */
+export function trackOpen(): void {
+  post('page_view', { ver: VER, ua: device(), vw: viewport() })
+}
+
+export function reportError(e: ErrorReport): void {
+  try {
+    if (sent >= MAX_REPORTS) return
+    const msg = String(e.msg || '').slice(0, 200)
+    if (!msg || seen.has(msg)) return
+    seen.add(msg)
+    sent++
+
+    post('client_error', {
+        msg,
+        src: e.src ? String(e.src).slice(0, 120) : null,
+        stack: e.stack ? String(e.stack).slice(0, 300) : null,
+        kind: e.kind ?? 'crash',
+        ver: VER,
+        ua: device(),
+        vw: viewport(),
+      role: 'owner', // single-operator app; there is no other role
+    })
   } catch {
     /* nothing about telemetry is worth breaking the app for */
   }
