@@ -402,9 +402,19 @@
 
 .field input:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
 
-.seg { display: flex; gap: 8px; }
+/* Scoped to the setup form on purpose.
 
-.seg button {
+   These used to be bare `.seg` and `.seg button`, which collided with
+   the app's own segmented control in global.css: `.seg button` is
+   (0,1,1) and `.seg__item--on` is (0,1,0), so the element selector won
+   and EVERY segmented control in the app lost its selected state —
+   Staff, the Finance tabs, the student status. Nothing looked broken
+   here, because this form uses `.seg__on` and that stayed specific
+   enough to win. A stylesheet for one screen must not name a class
+   another screen also uses. */
+.setup .seg { display: flex; gap: 8px; }
+
+.setup .seg button {
   flex: 1;
   height: 44px;
   border-radius: var(--r-md);
@@ -416,7 +426,7 @@
   cursor: pointer;
 }
 
-.seg .seg__on {
+.setup .seg .seg__on {
   background: var(--brand);
   border-color: var(--brand);
   color: var(--brand-ink);

@@ -706,7 +706,11 @@ ul {
     color var(--dur-fast) var(--ease);
 }
 
-.seg__item--on {
+/* `.seg .seg__item--on` rather than `.seg__item--on`: the selected
+   state is the whole point of a segmented control, so it is worth one
+   extra class of specificity to stop a stray descendant rule silently
+   flattening it. That is exactly what happened once already. */
+.seg .seg__item--on {
   background: var(--brand);
   color: var(--brand-ink);
   font-weight: 650;
