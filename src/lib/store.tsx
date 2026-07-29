@@ -9,8 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { AppData, Settings } from './types'
-import { buildEmptyData, buildSeedData, DEFAULT_SETTINGS } from './seed'
-import { allImages, putRaw } from './images'
+import { buildEmptyData, DEFAULT_SETTINGS } from './seed'
 import { reportIssue } from './telemetry'
 import {
   addExpense as cloudAddExpense,
@@ -195,9 +194,6 @@ interface Ctx {
   data: AppData
   update: (fn: (draft: AppData) => void) => void
   setSettings: (patch: Partial<Settings>) => void
-  resetToDemo: () => void
-  startFresh: () => void
-  importJSON: (json: string) => { ok: boolean; message: string }
   exportJSON: () => Promise<string>
   authed: boolean
   login: (code: string) => Promise<boolean>
@@ -346,33 +342,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [update],
   )
 
-  const resetToDemo = useCallback(() => setData(buildSeedData()), [])
-  const startFresh = useCallback(() => setData(buildEmptyData()), [])
 
   /* Screenshots live in IndexedDB, so a backup of the JSON alone would
      silently drop the payment evidence. They ride along under `images`. */
   const exportJSON = useCallback(
-    async () => JSON.stringify({ ...data, images: await allImages() }, null, 2),
+    /* Screenshots are not in here any more — they live in the private
+       payment-proofs bucket, attached to the payment they evidence. A
+       backup is a readable copy of the records, not a way to move the
+       academy between devices; the database does that. */
+    async () => JSON.stringify(data, null, 2),
     [data],
   )
 
-  const importJSON = useCallback((json: string) => {
-    try {
-      const parsed = JSON.parse(json) as AppData
-      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.batches)) {
-        return { ok: false, message: 'That file is not a Match Point Pride backup.' }
-      }
-      const images = (parsed as AppData & { images?: Record<string, string> }).images
-      if (images) {
-        for (const [id, dataUrl] of Object.entries(images)) void putRaw(id, dataUrl)
-      }
-      delete (parsed as AppData & { images?: unknown }).images
-      setData(normalise(parsed))
-      return { ok: true, message: 'Backup restored.' }
-    } catch {
-      return { ok: false, message: 'Could not read that file — is it valid JSON?' }
-    }
-  }, [])
 
   /* The PIN no longer proves anything by itself — it decrypts the
      Supabase refresh token this device was enrolled with, and that token
@@ -626,13 +607,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<Ctx>(
     () => ({
-      data, update, setSettings, resetToDemo, startFresh,
-      importJSON, exportJSON, authed, login, enrol, enrolled: vault.isEnrolled(), logout, toasts, toast,
+      data, update, setSettings,
+      exportJSON, authed, login, enrol, enrolled: vault.isEnrolled(), logout, toasts, toast,
       loading, loadError, refresh, saveStudent,
       saveBatch, removeBatch, recordFee, addRevenue, addExpense,
       saveStaff, removeStaff, markStaffDay, logReminderSent, removeEntry,
     }),
-    [data, update, setSettings, resetToDemo, startFresh, importJSON,
+    [data, update, setSettings,
      exportJSON, authed, login, enrol, logout, toasts, toast, loading, loadError, refresh, saveStudent,
      saveBatch, removeBatch, recordFee, addRevenue, addExpense,
      saveStaff, removeStaff, markStaffDay, logReminderSent, removeEntry],

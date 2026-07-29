@@ -1,48 +1,21 @@
 /* ============================================================
-   Payment screenshots.
+   Downscaling a payment screenshot before it is uploaded.
 
-   These cannot live in localStorage: one phone screenshot is
-   comfortably larger than the whole rest of the document, and a
-   handful would blow the ~5 MB quota and take the academy's data
-   down with them. So images go to IndexedDB (tens of MB), keyed by
-   id, and the JSON document only ever stores the key.
+   This file used to be an IndexedDB store as well, because there was
+   nowhere else to put an image: localStorage cannot hold one. Now the
+   screenshot goes straight to the private payment-proofs bucket, keyed
+   to the payment it evidences, so nothing is kept on the device and the
+   whole store has gone.
 
-   Every screenshot is downscaled and re-encoded before it is stored:
-   a 3 MB camera-roll capture becomes ~60 KB and is still perfectly
-   readable as a UPI receipt.
+   What is left is the resize. A phone screenshot is 2-4 MB and the
+   useful part is a few hundred kilobytes; uploading the original spends
+   the owner's data allowance on a photo of a bank app.
    ============================================================ */
 
-const DB = 'mpp-images'
-const STORE = 'images'
 const MAX_EDGE = 1100
 const QUALITY = 0.72
 
-function open(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB, 1)
-    req.onupgradeneeded = () => {
-      if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE)
-    }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
-
-function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  return open().then(
-    (db) =>
-      new Promise<T>((resolve, reject) => {
-        const t = db.transaction(STORE, mode)
-        const req = fn(t.objectStore(STORE))
-        req.onsuccess = () => resolve(req.result)
-        req.onerror = () => reject(req.error)
-        t.oncomplete = () => db.close()
-      }),
-  )
-}
-
-/** Shrink and re-encode so a screenshot costs kilobytes, not megabytes. */
-export async function compress(file: File | Blob): Promise<string> {
+async function compress(file: File | Blob): Promise<string> {
   const bitmap = await createImageBitmap(file)
   const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height))
   const w = Math.round(bitmap.width * scale)
@@ -59,67 +32,9 @@ export async function compress(file: File | Blob): Promise<string> {
   return canvas.toDataURL('image/jpeg', QUALITY)
 }
 
-/**
- * The same downscale, as a Blob for upload.
- *
- * A phone screenshot is 2-4 MB and the useful part is a few hundred
- * kilobytes; uploading the original wastes the owner's data allowance
- * on a photo of a bank app.
- */
+/** The downscale, as a Blob ready to upload. */
 export async function compressToBlob(file: File | Blob): Promise<Blob> {
   const dataUrl = await compress(file)
   const res = await fetch(dataUrl)
   return res.blob()
-}
-
-export async function putImage(file: File | Blob): Promise<string> {
-  const dataUrl = await compress(file)
-  const id = `img_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
-  await tx('readwrite', (s) => s.put(dataUrl, id))
-  return id
-}
-
-/** Stores an already-encoded data URL — used when restoring a backup. */
-export async function putRaw(id: string, dataUrl: string): Promise<void> {
-  await tx('readwrite', (s) => s.put(dataUrl, id))
-}
-
-export async function getImage(id: string): Promise<string | null> {
-  try {
-    return (await tx<string>('readonly', (s) => s.get(id))) ?? null
-  } catch {
-    return null
-  }
-}
-
-export async function deleteImage(id: string): Promise<void> {
-  try {
-    await tx('readwrite', (s) => s.delete(id))
-  } catch {
-    /* nothing to clean up */
-  }
-}
-
-/** Every stored screenshot, so backups carry the evidence with the record. */
-export async function allImages(): Promise<Record<string, string>> {
-  try {
-    const db = await open()
-    return await new Promise((resolve, reject) => {
-      const t = db.transaction(STORE, 'readonly')
-      const store = t.objectStore(STORE)
-      const keys = store.getAllKeys()
-      const vals = store.getAll()
-      t.oncomplete = () => {
-        const out: Record<string, string> = {}
-        ;(keys.result as string[]).forEach((k, i) => {
-          out[k] = (vals.result as string[])[i]
-        })
-        db.close()
-        resolve(out)
-      }
-      t.onerror = () => reject(t.error)
-    })
-  } catch {
-    return {}
-  }
 }
