@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import '../styles/landing.css'
 import { lockedForMs, useStore } from '../lib/store'
 import { navigate } from '../lib/router'
+import { isEnrolled, pinLength } from '../lib/vault'
 import { Sheet } from '../components/ui'
 import { IconLock, IconTrophy, IconWhatsApp } from '../components/icons'
 import BrandMark from '../components/BrandMark'
@@ -126,7 +127,13 @@ export default function Landing() {
         </Rise>
       </footer>
 
-      <PasscodeSheet open={open} onClose={() => setOpen(false)} onSubmit={login} />
+      <PasscodeSheet
+        open={open}
+        onClose={() => setOpen(false)}
+        onSubmit={login}
+        pinLen={pinLength()}
+        enrolled={isEnrolled()}
+      />
     </div>
   )
 }
@@ -141,14 +148,126 @@ function Rise({ children, delay = 0 }: { children: ReactNode; delay?: number }) 
   )
 }
 
+/* First run on a device.
+   The only moment a password is involved, and it is never stored: what
+   is kept is the session Supabase hands back, sealed under the PIN. */
+function SetupForm({ onDone }: { onDone: () => void }) {
+  const { enrol } = useStore()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [pin, setPin] = useState('')
+  const [pin2, setPin2] = useState('')
+  const [len, setLen] = useState<4 | 6>(4)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const ready = email.includes('@') && password.length > 0 && pin.length === len && pin === pin2
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!ready || busy) return
+    setBusy(true)
+    setErr('')
+    const r = await enrol(email.trim(), password, pin)
+    setBusy(false)
+    if (r.ok) onDone()
+    else setErr(r.message)
+  }
+
+  return (
+    <form className="setup" onSubmit={submit}>
+      <p className="setup__note">
+        Sign in once with the academy account. After this the app opens with your PIN —
+        you will not need the password again on this phone.
+      </p>
+
+      <label className="field">
+        <span>Academy email</span>
+        <input
+          type="email"
+          autoComplete="username"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="staff@matchpointpride.com"
+        />
+      </label>
+
+      <label className="field">
+        <span>Password</span>
+        <input
+          type="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+      </label>
+
+      <div className="field">
+        <span>PIN length</span>
+        <div className="seg">
+          {([4, 6] as const).map((n) => (
+            <button
+              key={n}
+              type="button"
+              className={n === len ? 'seg__on' : ''}
+              onClick={() => {
+                setLen(n)
+                setPin('')
+                setPin2('')
+              }}
+            >
+              {n} digits
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <label className="field">
+        <span>Choose a PIN</span>
+        <input
+          inputMode="numeric"
+          type="password"
+          maxLength={len}
+          value={pin}
+          onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+        />
+      </label>
+
+      <label className="field">
+        <span>Confirm PIN</span>
+        <input
+          inputMode="numeric"
+          type="password"
+          maxLength={len}
+          value={pin2}
+          onChange={(e) => setPin2(e.target.value.replace(/\D/g, ''))}
+        />
+      </label>
+
+      {pin.length === len && pin2.length === len && pin !== pin2 && (
+        <p className="setup__err">Those two PINs are different.</p>
+      )}
+      {err && <p className="setup__err">{err}</p>}
+
+      <button className="btn btn--primary setup__go" type="submit" disabled={!ready || busy}>
+        {busy ? 'Signing in…' : 'Set up this phone'}
+      </button>
+    </form>
+  )
+}
+
 function PasscodeSheet({
   open,
   onClose,
   onSubmit,
+  pinLen,
+  enrolled,
 }: {
   open: boolean
   onClose: () => void
-  onSubmit: (code: string) => boolean
+  onSubmit: (code: string) => Promise<boolean>
+  pinLen: 4 | 6
+  enrolled: boolean
 }) {
   const [code, setCode] = useState('')
   const [err, setErr] = useState(false)
@@ -171,31 +290,54 @@ function PasscodeSheet({
   }, [open])
 
   useEffect(() => {
-    if (code.length !== 4) return
+    if (code.length !== pinLen) return
+    let cancelled = false
     const t = setTimeout(() => {
-      if (onSubmit(code)) {
-        navigate('/app')
-      } else {
-        setErr(true)
-        setTimeout(() => {
-          setCode('')
-          setErr(false)
-        }, 460)
-      }
+      /* Unlocking is a key derivation and a network round trip now, not
+         a string compare, so this waits for the answer. */
+      void onSubmit(code).then((ok) => {
+        if (cancelled) return
+        if (ok) {
+          navigate('/app')
+        } else {
+          setErr(true)
+          setTimeout(() => {
+            if (cancelled) return
+            setCode('')
+            setErr(false)
+          }, 460)
+        }
+      })
     }, 90)
-    return () => clearTimeout(t)
-  }, [code, onSubmit])
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [code, onSubmit, pinLen])
 
   const locked = lockMs > 0
   const press = (d: string) => {
     if (err || locked) return
-    setCode((c) => (c.length >= 4 ? c : c + d))
+    setCode((c) => (c.length >= pinLen ? c : c + d))
+  }
+
+  if (!enrolled) {
+    return (
+      <Sheet
+        open={open}
+        onClose={onClose}
+        title="Set up this phone"
+        subtitle="Once only — a PIN after this"
+      >
+        <SetupForm onDone={() => navigate('/app')} />
+      </Sheet>
+    )
   }
 
   return (
     <Sheet open={open} onClose={onClose} title="Academy login" subtitle="Owner access only">
       <div className="pass">
-        {[0, 1, 2, 3].map((i) => (
+        {Array.from({ length: pinLen }, (_, i) => i).map((i) => (
           <div
             key={i}
             className={`pass__dot${code.length > i ? ' pass__dot--filled' : ''}${

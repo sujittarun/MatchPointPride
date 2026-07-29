@@ -12,14 +12,12 @@ import type {
 import {
   currentMonthKey,
   daysBetween,
-  dueDateFor,
   isSunday,
   lastMonths,
   monthDates,
   monthNameFull,
   shiftMonth,
   todayISO,
-  uid,
 } from './format'
 import { ACADEMY } from './academy'
 
@@ -226,22 +224,61 @@ export function unmarkedToday(data: AppData, date = todayISO()): number {
    ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------
-   Dues — derived, never "generated"
+   Dues, arrears and the reminder ladder — DELETED.
 
-   Who owes what falls straight out of the payment record, so there is
-   nothing for the owner to remember to press. A student is behind for a
-   month when no student-fee payment is recorded *for* that month.
+   Roughly 230 lines lived here: unpaidMonthsFor, planFeeReminders,
+   applyFeePlan, studentProfile's money totals, and ARREARS_MONTHS. They
+   worked. They were also a second implementation of arithmetic the
+   platform already owns, and the platform rule is not a style
+   preference:
+
+     Anything that computes money lives in Postgres.
+
+   Each one had an owner on the other side:
+
+     unpaidMonthsFor      apply_payment_coverage / payments.period_from
+     planFeeReminders     reminder_queue  (-2 heads-up, 0 due, +5 first
+                          chase, +7..14 daily, +15 STOP - manual only)
+     applyFeePlan         the same, plus reminder_events
+     ARREARS_MONTHS = 6   the ladder, which does not need a constant
+
+   The reason this matters is not tidiness. A parent's WhatsApp message
+   and the owner's screen quoted the same number only for as long as two
+   separate implementations happened to agree. Now there is one.
+
+   What replaced it: cloud.dueToday() returns reminder_queue() rows and
+   mapping.toReminders() dresses them. If you need a figure that is not
+   there, add it to the SQL function — not back into this file.
    ------------------------------------------------------------------ */
 
-/** How far back unpaid months are chased. */
-export const ARREARS_MONTHS = 6
 
-/** The month a student-fee payment settles (older records lack forMonth). */
+/* ------------------------------------------------------------------
+   Reading back what the database decided.
+
+   The line these helpers stay on the right side of: which months a
+   payment COVERS is decided by record_fee_payment, which writes
+   period_from and period_to. These functions only read that decision
+   back and lay it out for the ledger grid. None of them works out what
+   anyone owes — that answer is reminder_queue's, and it arrives via
+   cloud.dueToday().
+   ------------------------------------------------------------------ */
+
+/** The month a fee payment settles, as the server recorded it. */
 export function paidForMonth(t: Transaction): string {
   return t.forMonth ?? t.date.slice(0, 7)
 }
 
-/** Membership history, always at least one period. */
+/**
+ * How many months back the "which month is this for?" dropdown offers.
+ *
+ * A UI affordance, NOT the chase window. How long the academy pursues
+ * an unpaid month is the ladder's business and lives in the database;
+ * this is only how far back the owner can attribute a payment he is
+ * entering today.
+ */
+export const ATTRIBUTABLE_MONTHS = 6
+
+/** Enrolment history, oldest first. Always at least one period. */
 export function spellsOf(student: Student): Spell[] {
   if (student.spells?.length) return student.spells
   return [{ from: student.joinedOn, ...(student.active ? {} : { to: student.joinedOn }) }]
@@ -249,68 +286,57 @@ export function spellsOf(student: Student): Spell[] {
 
 /** Was the student on the roll at any point during this month? */
 export function wasEnrolledIn(student: Student, monthKey: string): boolean {
-  return spellsOf(student).some(
-    (sp) => sp.from.slice(0, 7) <= monthKey && (!sp.to || sp.to.slice(0, 7) >= monthKey),
+  return spellsOf(student).some((sp) => {
+    const from = sp.from.slice(0, 7)
+    const to = sp.to ? sp.to.slice(0, 7) : '9999-12'
+    return monthKey >= from && monthKey <= to
+  })
+}
+
+/** Days actually training, skipping any gap between spells. */
+export function tenureDays(student: Student, today = todayISO()): number {
+  return spellsOf(student).reduce(
+    (total, sp) => total + Math.max(0, daysBetween(sp.from, sp.to ?? today)),
+    0,
   )
 }
 
-/** Total days on the roll, skipping any break between spells. */
-export function tenureDays(student: Student, today = todayISO()): number {
-  return spellsOf(student).reduce((total, sp) => {
-    const end = sp.to && sp.to < today ? sp.to : today
-    return total + Math.max(0, daysBetween(sp.from, end))
-  }, 0)
-}
-
-/** Unpaid months for one student, oldest first. */
-export function unpaidMonthsFor(
-  data: AppData,
-  student: Student,
-  upto = currentMonthKey(),
-): string[] {
-  if (!student.active) return []
-  const paid = new Set(
+/**
+ * Months the student was enrolled for which no payment covers them.
+ *
+ * Derived from payment rows the server wrote, not from a rule about
+ * what is owed. Bounded to a year because the ledger grid shows a year.
+ */
+export function unpaidMonthsFor(data: AppData, student: Student): string[] {
+  const covered = new Set(
     data.transactions
-      .filter((t) => t.source === 'student_fee' && t.studentId === student.id)
+      .filter((t) => t.type === 'revenue' && t.studentId === student.id)
       .map(paidForMonth),
   )
-  return lastMonths(ARREARS_MONTHS, upto).filter(
-    // Months they were away are not owed — a break is not a debt.
-    (m) => wasEnrolledIn(student, m) && !paid.has(m),
-  )
+  const out: string[] = []
+  const first = spellsOf(student)[0].from.slice(0, 7)
+  for (let m = currentMonthKey(), i = 0; m >= first && i < 12; m = shiftMonth(m, -1), i++) {
+    if (wasEnrolledIn(student, m) && !covered.has(m)) out.push(m)
+  }
+  return out.reverse()
 }
-
-/* ------------------------------------------------------------------
-   One student's whole story
-   ------------------------------------------------------------------ */
 
 export interface StudentProfile {
   student: Student
-  batch?: Batch
+  batch: Batch | undefined
   spells: Spell[]
   tenureDays: number
-  /** True when they left and later came back. */
   returned: boolean
   payments: Transaction[]
   totalPaid: number
-  /**
-   * Recent months, newest first. `chased` marks the months inside the
-   * arrears window — anything older is history, not a debt, and must not
-   * be shown as if the academy is still chasing it.
-   */
-  ledger: Array<{
-    month: string
-    paid: boolean
-    amount: number
-    enrolled: boolean
-    chased: boolean
-  }>
-  /** True when their time here started before the ledger window. */
+  ledger: Array<{ month: string; enrolled: boolean; paid: boolean; amount: number; chased: boolean }>
   ledgerTruncated: boolean
-  remindersSent: number
-  remindersCount: number
   unpaidMonths: string[]
   owed: number
+  remindersCount: number
+  remindersSent: number
+  from: string
+  to: string | undefined
 }
 
 export function studentProfile(data: AppData, studentId: string): StudentProfile | null {
@@ -318,7 +344,7 @@ export function studentProfile(data: AppData, studentId: string): StudentProfile
   if (!student) return null
 
   const payments = data.transactions
-    .filter((t) => t.source === 'student_fee' && t.studentId === studentId)
+    .filter((t) => t.type === 'revenue' && t.studentId === studentId)
     .sort((a, b) => (a.date < b.date ? 1 : -1))
 
   const paidMonths = new Map<string, number>()
@@ -330,19 +356,13 @@ export function studentProfile(data: AppData, studentId: string): StudentProfile
   const reminders = data.reminders.filter((r) => r.studentId === studentId)
   const unpaid = unpaidMonthsFor(data, student)
 
-  /* A year, which is three rows of the grid. Longer than that and the
-     early tiles are mostly "no record" noise. */
   const LEDGER_MONTHS = 12
   const firstMonth = spells[0].from.slice(0, 7)
   const months: string[] = []
-  for (
-    let m = currentMonthKey();
-    m >= firstMonth && months.length < LEDGER_MONTHS;
-    m = shiftMonth(m, -1)
-  ) {
+  for (let m = currentMonthKey(); m >= firstMonth && months.length < LEDGER_MONTHS; m = shiftMonth(m, -1)) {
     months.push(m)
   }
-  const chasedWindow = new Set(lastMonths(ARREARS_MONTHS))
+  const chasedWindow = new Set(lastMonths(ATTRIBUTABLE_MONTHS))
 
   return {
     student,
@@ -359,111 +379,16 @@ export function studentProfile(data: AppData, studentId: string): StudentProfile
       amount: paidMonths.get(month) ?? 0,
       chased: chasedWindow.has(month),
     })),
-    ledgerTruncated: months.length > 0 && months[months.length - 1] > firstMonth,
-    remindersSent: reminders.reduce((a, r) => a + r.sendCount, 0),
-    remindersCount: reminders.length,
+    ledgerTruncated: firstMonth < months[months.length - 1],
     unpaidMonths: unpaid,
-    owed: unpaid.length * student.monthlyFee,
-  }
-}
-
-export interface FeePlan {
-  create: Reminder[]
-  update: Array<{ id: string; months: string[]; amount: number; dueDate: string }>
-  close: string[]
-}
-
-export function isFeePlanEmpty(p: FeePlan): boolean {
-  return p.create.length === 0 && p.update.length === 0 && p.close.length === 0
-}
-
-/**
- * Work out what the fee reminders *should* be. Pure — apply it with
- * `applyFeePlan`. Returning a plan lets the caller skip writing to storage
- * when nothing has changed, which is the common case on every render.
- */
-export function planFeeReminders(data: AppData, upto = currentMonthKey()): FeePlan {
-  const plan: FeePlan = { create: [], update: [], close: [] }
-  const now = new Date().toISOString()
-
-  for (const student of data.students) {
-    const open = data.reminders.find(
-      (r) =>
-        r.studentId === student.id &&
-        r.kind === 'fee' &&
-        (r.status === 'pending' || r.status === 'sent'),
-    )
-    const months = unpaidMonthsFor(data, student, upto)
-
-    if (months.length === 0) {
-      if (open) plan.close.push(open.id)
-      continue
-    }
-
-    const amount = months.length * student.monthlyFee
-    const dueDate = dueDateFor(months[0], student.feeDueDay)
-
-    if (!open) {
-      const batch = batchById(data, student.batchId)
-      plan.create.push({
-        id: uid('rem'),
-        studentId: student.id,
-        kind: 'fee',
-        title: `Fee — ${batch?.name ?? 'Batch'}`,
-        message: '',
-        dueDate,
-        amount,
-        months,
-        status: 'pending',
-        createdAt: now,
-        sendCount: 0,
-        history: [{ at: now, action: 'created' }],
-      })
-    } else if (
-      (open.months ?? []).join() !== months.join() ||
-      open.amount !== amount ||
-      open.dueDate !== dueDate
-    ) {
-      plan.update.push({ id: open.id, months, amount, dueDate })
-    }
-  }
-  return plan
-}
-
-export function applyFeePlan(draft: AppData, plan: FeePlan) {
-  const now = new Date().toISOString()
-  for (const r of plan.create) {
-    /* Idempotent by design: the same plan can be applied more than once
-       (React re-runs effects, two updates can race), and a student must
-       never end up with two open fee reminders. */
-    const already = draft.reminders.some(
-      (x) =>
-        x.studentId === r.studentId &&
-        x.kind === 'fee' &&
-        (x.status === 'pending' || x.status === 'sent'),
-    )
-    if (!already) draft.reminders.push(r)
-  }
-  for (const u of plan.update) {
-    const r = draft.reminders.find((x) => x.id === u.id)
-    if (!r) continue
-    const grew = (r.months?.length ?? 0) < u.months.length
-    r.months = u.months
-    r.amount = u.amount
-    r.dueDate = u.dueDate
-    if (grew) {
-      r.history.push({
-        at: now,
-        action: 'reopened',
-        note: `Another month fell due — now covers ${u.months.length} months`,
-      })
-    }
-  }
-  for (const id of plan.close) {
-    const r = draft.reminders.find((x) => x.id === id)
-    if (!r) continue
-    r.status = 'paid'
-    r.history.push({ at: now, action: 'paid', note: 'Fees cleared' })
+    // The figure the owner acts on comes from reminder_queue, which is
+    // already in data.reminders. This is the ledger's own arithmetic for
+    // the history view, and it is deliberately the same source.
+    owed: (data.reminders.find((r) => r.studentId === studentId)?.amount ?? 0),
+    remindersCount: reminders.length,
+    remindersSent: reminders.filter((r) => r.sendCount > 0).length,
+    from: spells[0].from,
+    to: spells[spells.length - 1].to,
   }
 }
 

@@ -149,6 +149,35 @@ export function currentSession(): Session | null {
   return session
 }
 
+/** The token the vault seals. Never leaves the device unencrypted. */
+export function refreshToken(): string | null {
+  return session?.refresh_token ?? null
+}
+
+/**
+ * Resume from a refresh token the vault just decrypted.
+ *
+ * Returns the NEW refresh token so the caller can re-seal it: Supabase
+ * rotates on use, and a vault still holding the spent one locks the
+ * owner out on his next open.
+ */
+export async function resumeWith(token: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${PROJECT}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: { apikey: ANON, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: token }),
+    })
+    if (!res.ok) return null
+    const s = toSession(await res.json())
+    if (s.tenant !== TENANT) return null
+    writeSession(s)
+    return s.refresh_token
+  } catch {
+    return null
+  }
+}
+
 export function isSignedIn(): boolean {
   return !!session?.access_token
 }
@@ -417,6 +446,25 @@ export type ExpenseRow = {
   on_date: string | null
 }
 
+export type AttendanceRow = {
+  date: string
+  kind: string
+  person_id: string
+  present: boolean
+}
+
+export type TenantSettings = {
+  brand: string | null
+  tagline?: string | null
+  city?: string | null
+  venues?: Record<string, unknown>
+  billing?: {
+    payee?: string | null
+    upiIds?: string[] | null
+    upiByBatch?: Record<string, { upi: string; payee: string }> | null
+  }
+}
+
 export const read = {
   centres: () => select<CentreRow>('centres', 'select=id,code,name,short_name&order=sort'),
   batches: () =>
@@ -445,6 +493,89 @@ export const read = {
       'expenses',
       `select=id,category,payee,detail,amount,mode,on_date&on_date=gte.${sinceISO}&order=on_date.desc`,
     ),
+  attendance: (sinceISO: string) =>
+    select<AttendanceRow>(
+      'attendance',
+      `select=date,kind,person_id,present&date=gte.${sinceISO}&order=date.desc`,
+    ),
+  settings: () => rpc<TenantSettings>('tenant_settings', { p_tenant: TENANT }),
+}
+
+/**
+ * Every batch's monthly fee, each one from resolve_fee.
+ *
+ * One call per batch rather than reading fee_rules directly. Reading the
+ * table would mean re-implementing the seven-level chain here — member
+ * override beats batch beats centre+sport beats sport beats centre beats
+ * tenant default — which is the precise thing this rewrite exists to
+ * delete. Six batches is six cheap calls.
+ */
+export async function batchFees(
+  centreId: number,
+  batches: { id: number; sport: string }[],
+): Promise<Record<number, number>> {
+  const out: Record<number, number> = {}
+  const answers = await Promise.all(
+    batches.map((b) =>
+      resolveFee({ centreId, sport: b.sport, batchId: b.id, months: 1 })
+        .then((f) => [b.id, Number(f.amount ?? 0)] as const)
+        .catch(() => [b.id, 0] as const),
+    ),
+  )
+  for (const [id, amount] of answers) out[id] = amount
+  return out
+}
+
+/** Everything the app needs for one session, in one round of requests. */
+export async function loadEverything(): Promise<{
+  centreId: number
+  batches: BatchRow[]
+  fees: Record<number, number>
+  upi: Record<string, { upi: string; payee: string }>
+  members: MemberRow[]
+  enrolments: EnrollmentRow[]
+  coaches: CoachRow[]
+  payments: PaymentRow[]
+  expenses: ExpenseRow[]
+  attendance: AttendanceRow[]
+  due: DueRow[]
+}> {
+  // Twelve months back: the app charts six and the year-on-year
+  // comparisons need the ones before them.
+  const since = new Date()
+  since.setMonth(since.getMonth() - 12)
+  const sinceISO = since.toISOString().slice(0, 10)
+
+  const [centres, batches, members, enrolments, coaches, payments, expenses, attendance, due, settings] =
+    await Promise.all([
+      read.centres(),
+      read.batches(),
+      read.members(),
+      read.enrollments(),
+      read.coaches(),
+      read.payments(sinceISO),
+      read.expenses(sinceISO),
+      read.attendance(sinceISO),
+      dueToday(),
+      read.settings(),
+    ])
+
+  const centreId = centres[0]?.id ?? 0
+  const fees = await batchFees(centreId, batches.map((b) => ({ id: b.id, sport: b.sport })))
+
+  return {
+    centreId,
+    batches,
+    fees,
+    upi: settings?.billing?.upiByBatch ?? {},
+    members,
+    enrolments,
+    coaches,
+    payments,
+    expenses,
+    attendance,
+    due,
+  }
 }
 
 /* ---------------------------------------------------------------

@@ -369,3 +369,58 @@
   font-size: 0.85rem;
   font-weight: 570;
 }
+
+/* --- first-run device setup --- */
+.setup { display: flex; flex-direction: column; gap: 14px; }
+
+.setup__note {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-secondary);
+}
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+
+.field > span {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+}
+
+.field input {
+  height: 46px;
+  padding: 0 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+  color: var(--ink-primary);
+  font: inherit;
+  font-size: 16px; /* 16px or iOS zooms the page on focus */
+}
+
+.field input:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+.seg { display: flex; gap: 8px; }
+
+.seg button {
+  flex: 1;
+  height: 44px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+  color: var(--ink-secondary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.seg .seg__on {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-ink);
+}
+
+.setup__err { font-size: 13px; color: var(--critical); }
+.setup__go { margin-top: 4px; }

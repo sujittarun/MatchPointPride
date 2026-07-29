@@ -21,11 +21,13 @@ Full platform rules: `AcademyManager/PLATFORM.md`.
 
 ---
 
-## ⚠ THIS REPO CURRENTLY VIOLATES THAT RULE
+## The violation is closed
 
-It was built standalone, before it was understood to be a tenant. Every
-money rule is in TypeScript, on the client, and duplicates a function
-that already exists in Postgres:
+Every money rule now lives in Postgres. `selectors.ts` lost 242 lines —
+`unpaidMonthsFor`, `planFeeReminders`, `applyFeePlan`, `ARREARS_MONTHS`
+— and `store.tsx` lost the reminder replan that raced the real ladder.
+
+What each of them became:
 
 | In this repo | Already exists server-side |
 |---|---|
@@ -38,8 +40,10 @@ that already exists in Postgres:
 | attendance stats | `attendance_roster/history/dashboard()` |
 | `localStorage` as the database | the platform database |
 
-**Do not deepen this.** No new fee, arrears, renewal or reminder-timing
-logic in TypeScript. If a number is needed, call the RPC.
+**Keep it closed.** No new fee, arrears, renewal or reminder-timing
+logic in TypeScript. If a number is needed, add it to the SQL function
+and read it — do not derive it here. `mapping.ts` may reshape a row; it
+may not decide anything.
 
 ## The target
 

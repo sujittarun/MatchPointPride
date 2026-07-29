@@ -10,9 +10,18 @@ import {
 } from 'react'
 import type { AppData, Settings } from './types'
 import { buildEmptyData, buildSeedData, DEFAULT_SETTINGS } from './seed'
-import { applyFeePlan, isFeePlanEmpty, planFeeReminders } from './selectors'
 import { allImages, putRaw } from './images'
 import { reportIssue } from './telemetry'
+import {
+  isSignedIn,
+  loadEverything,
+  refreshToken,
+  resumeWith,
+  signIn as cloudSignIn,
+  signOut as cloudSignOut,
+} from './cloud'
+import * as vault from './vault'
+import { assemble } from './mapping'
 
 const KEY = 'mpp.data.v1'
 const AUTH_KEY = 'mpp.auth.v1'
@@ -211,10 +220,22 @@ interface Ctx {
   importJSON: (json: string) => { ok: boolean; message: string }
   exportJSON: () => Promise<string>
   authed: boolean
-  login: (code: string) => boolean
+  login: (code: string) => Promise<boolean>
+  /** First run on this device: email + password once, then a PIN. */
+  enrol: (email: string, password: string, pin: string) => Promise<{ ok: boolean; message: string }>
+  /** Has this device been set up? Decides which login screen shows. */
+  enrolled: boolean
   logout: () => void
   toasts: Toast[]
   toast: (text: string, tone?: 'good' | 'bad') => void
+  /** True while the tenant is being read from Postgres. */
+  loading: boolean
+  /** Non-null when the last read failed; the pages show stale data with a banner. */
+  loadError: string | null
+  /** Re-read everything. Called after any write, because the database
+      may have changed more than the write did — a payment moves a
+      renewal date and closes a reminder. */
+  refresh: () => Promise<void>
 }
 
 const StoreContext = createContext<Ctx | null>(null)
@@ -232,6 +253,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   })
   const [toasts, setToasts] = useState<Toast[]>([])
+  const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const toastId = useRef(0)
   const firstSave = useRef(true)
   const lastSaveError = useRef<string | null>(null)
@@ -252,6 +275,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toast(err, 'bad')
     }
   }, [toast])
+
+  /* Pull the whole tenant from Postgres.
+
+     Every number in here was computed by the database — fees by
+     resolve_fee, who is due by reminder_queue. Nothing is recomputed on
+     arrival; mapping.ts only reshapes. */
+  const refresh = useCallback(async () => {
+    if (!isSignedIn()) return
+    try {
+      setLoading(true)
+      const raw = await loadEverything()
+      setData((prev) => assemble({ ...raw, passcode: prev.settings.passcode }))
+      setLoadError(null)
+    } catch (err) {
+      reportIssue('load', err)
+      setLoadError(
+        err instanceof Error ? err.message : 'Could not reach the academy database.',
+      )
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (authed) void refresh()
+  }, [authed, refresh])
 
   useEffect(() => {
     // Don't rewrite storage with what we just read out of it.
@@ -287,14 +336,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  /* Fee reminders are kept in step with the payment record automatically —
-     there is no "generate" step to remember. This runs whenever the things
-     it depends on change, and writes only when the plan is non-empty, so it
-     settles after one pass instead of looping. */
-  useEffect(() => {
-    const plan = planFeeReminders(data)
-    if (!isFeePlanEmpty(plan)) update((d) => applyFeePlan(d, plan))
-  }, [data, update])
+  /* The reminder replan that used to live here is gone. It walked the
+     payment record on every state change and wrote reminders locally —
+     a second implementation of the ladder, racing the real one. The
+     queue now arrives from reminder_queue() with refresh(), so there is
+     nothing to keep in step. */
 
   const setSettings = useCallback(
     (patch: Partial<Settings>) => {
@@ -333,31 +379,78 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  /* The PIN no longer proves anything by itself — it decrypts the
+     Supabase refresh token this device was enrolled with, and that token
+     is what the platform actually trusts. A wrong PIN fails to decrypt;
+     there is no comparison to skip past. */
   const login = useCallback(
-    (code: string) => {
+    async (code: string) => {
       if (lockedForMs() > 0) return false
+      if (!vault.isEnrolled()) return false
 
-      const ok = code.trim() === (data.settings.passcode || '1234')
-      if (ok) {
-        writeAttempts({ count: 0, until: 0 })
-        setAuthed(true)
-        try {
-          sessionStorage.setItem(AUTH_KEY, '1')
-        } catch {
-          /* session storage unavailable — stay logged in for this render only */
+      const token = await vault.unlock(code)
+      if (token) {
+        const rotated = await resumeWith(token)
+        if (rotated) {
+          // Supabase rotates on use; a vault holding the spent token
+          // would lock the owner out tomorrow.
+          await vault.reseal(code, rotated)
+          writeAttempts({ count: 0, until: 0 })
+          setAuthed(true)
+          try {
+            sessionStorage.setItem(AUTH_KEY, '1')
+          } catch {
+            /* session storage unavailable — logged in for this render only */
+          }
+          return true
         }
-        return true
+        // Right PIN, dead token: the session was revoked or expired.
+        // Make him sign in again rather than counting it as a bad PIN.
+        vault.forget()
+        return false
       }
 
       const count = readAttempts().count + 1
       const wait = LOCKOUTS_MS[Math.min(count, LOCKOUTS_MS.length - 1)]
       writeAttempts({ count, until: wait ? Date.now() + wait : 0 })
+      // Past the ladder, the device forgets itself. A short PIN is only
+      // defensible because guessing has a hard stop.
+      if (count >= LOCKOUTS_MS.length + 2) vault.forget()
       return false
     },
     [data.settings.passcode],
   )
 
+  /* One-time device setup: the only moment a password is involved. It
+     is never stored — what is kept is the refresh token Supabase
+     returns, sealed under the PIN. */
+  const enrol = useCallback(
+    async (email: string, password: string, pin: string) => {
+      try {
+        const s = await cloudSignIn(email, password)
+        const token = refreshToken()
+        if (!token) return { ok: false, message: 'Signed in but no session came back.' }
+        await vault.enrol({ pin, refreshToken: token, email: s.email || email })
+        writeAttempts({ count: 0, until: 0 })
+        setAuthed(true)
+        try {
+          sessionStorage.setItem(AUTH_KEY, '1')
+        } catch {
+          /* fine */
+        }
+        return { ok: true, message: '' }
+      } catch (err) {
+        return {
+          ok: false,
+          message: err instanceof Error ? err.message : 'Could not sign in.',
+        }
+      }
+    },
+    [],
+  )
+
   const logout = useCallback(() => {
+    cloudSignOut()
     setAuthed(false)
     try {
       sessionStorage.removeItem(AUTH_KEY)
@@ -369,10 +462,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Ctx>(
     () => ({
       data, update, setSettings, resetToDemo, startFresh,
-      importJSON, exportJSON, authed, login, logout, toasts, toast,
+      importJSON, exportJSON, authed, login, enrol, enrolled: vault.isEnrolled(), logout, toasts, toast,
+      loading, loadError, refresh,
     }),
     [data, update, setSettings, resetToDemo, startFresh, importJSON,
-     exportJSON, authed, login, logout, toasts, toast],
+     exportJSON, authed, login, enrol, logout, toasts, toast, loading, loadError, refresh],
   )
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>

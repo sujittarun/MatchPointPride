@@ -56,6 +56,13 @@ export interface Student {
   feeDueDay: number
   active: boolean
   note?: string
+  /**
+   * Platform row ids. Present whenever the student came from Postgres,
+   * which is always now — a write has to address the enrolment, and
+   * looking it up by name would be a guess.
+   */
+  enrollmentId?: number
+  memberId?: number
 }
 
 export type ReminderKind = 'fee' | 'renewal' | 'attendance' | 'custom'

@@ -9,7 +9,7 @@ import {
   collectionRate, dashboard, expenseByCategory, moneyByMonth, monthTotals,
   renderReminderMessage, reminderStats, revenueBySource, smsLink,
   staffLifetime, staffMonthStats, workingDays, whatsappLink,
-  unpaidMonthsFor, planFeeReminders, applyFeePlan, isFeePlanEmpty, monthsPhrase, paidForMonth,
+  monthsPhrase, paidForMonth, unpaidMonthsFor,
 } from '../src/lib/selectors'
 import { buildEmptyData, buildSeedData } from '../src/lib/seed'
 import { normalise } from '../src/lib/store'
@@ -434,80 +434,29 @@ ok('seed: all amounts positive', seed.transactions.every((t) => t.amount > 0))
 }
 
 
-/* ================= arrears: unpaid months and combined reminders ================= */
-{
-  const base: AppData = JSON.parse(JSON.stringify(buildEmptyData()))
-  const b = base.batches[0]
-  const NOW = currentMonthKey()
-  const PREV = shiftMonth(NOW, -1)
-  const PREV2 = shiftMonth(NOW, -2)
+/* ================= arrears and the reminder ladder =================
 
-  base.students = [{
-    id: 'a', name: 'Arrear Anna', batchId: b.id, phone: '9', joinedOn: shiftMonth(NOW, -5) + '-01',
-    monthlyFee: 2000, feeDueDay: 5, active: true,
-  }]
+   These assertions are gone, and deliberately not replaced with
+   client-side equivalents.
 
-  // nothing paid -> every month in the window is owed
-  const all = unpaidMonthsFor(base, base.students[0], NOW)
-  eq('arrears: unpaid months are oldest-first', all[0] < all[all.length - 1], true)
-  ok('arrears: current month is owed', all.includes(NOW))
+   They tested unpaidMonthsFor, planFeeReminders and applyFeePlan —
+   which computed, in TypeScript, who owed what and when to chase them.
+   That logic now belongs to Postgres (reminder_queue, resolve_fee,
+   record_fee_payment), so testing it here would mean re-implementing it
+   here, which is precisely the duplication this change removed.
 
-  // paying PREV2 removes exactly that month
-  base.transactions.push({ id: 't1', type: 'revenue', date: NOW + '-10', forMonth: PREV2,
-    amount: 2000, category: 'Student Fee', source: 'student_fee', studentId: 'a', createdAt: '' })
-  const afterOne = unpaidMonthsFor(base, base.students[0], NOW)
-  ok('arrears: paying a month clears that month', !afterOne.includes(PREV2))
-  ok('arrears: cash date does not clear the wrong month', afterOne.includes(NOW))
-  eq('arrears: one fewer month owed', afterOne.length, all.length - 1)
+   The equivalent proofs run as SQL, inside the migrations, against the
+   real database and rolled back:
 
-  // legacy rows without forMonth fall back to their date
-  base.transactions.push({ id: 't2', type: 'revenue', date: PREV + '-10',
-    amount: 2000, category: 'Student Fee', source: 'student_fee', studentId: 'a', createdAt: '' })
-  eq('arrears: legacy row without forMonth uses its date', paidForMonth(base.transactions[1]), PREV)
-  ok('arrears: legacy row clears its month', !unpaidMonthsFor(base, base.students[0], NOW).includes(PREV))
+     0008  full life cycle — resolve_fee 1200 from the batch rule,
+           reminder_queue stage overdue at day 5, record_fee_payment
+           rolling the renewal forward, the student leaving the queue
+     0017  the same fixture again, so a tenant guard cannot be added
+           without proving it did not break what it protects
+     0019  one student at each rung of the ladder in the seed data
 
-  // ONE reminder covering all remaining months
-  const plan = planFeeReminders(base, NOW)
-  eq('plan: exactly one reminder for the student', plan.create.length, 1)
-  const rem = plan.create[0]
-  const owed = unpaidMonthsFor(base, base.students[0], NOW)
-  eq('plan: covers every unpaid month', rem.months, owed)
-  eq('plan: amount is fee x months', rem.amount, 2000 * owed.length)
-  eq('plan: dated from the OLDEST unpaid month', rem.dueDate, owed[0] + '-05')
-
-  applyFeePlan(base, plan)
-  eq('apply: reminder added', base.reminders.length, 1)
-
-  // idempotency — the same plan applied twice must not duplicate
-  applyFeePlan(base, plan)
-  eq('apply: applying twice does not duplicate', base.reminders.length, 1)
-  const replan = planFeeReminders(base, NOW)
-  eq('plan: settled state produces no further work', isFeePlanEmpty(replan), true)
-
-  // clearing every month closes the reminder
-  for (const m of owed) {
-    base.transactions.push({ id: 'p' + m, type: 'revenue', date: NOW + '-20', forMonth: m,
-      amount: 2000, category: 'Student Fee', source: 'student_fee', studentId: 'a', createdAt: '' })
-  }
-  const closing = planFeeReminders(base, NOW)
-  eq('plan: nothing owed -> close the reminder', closing.close.length, 1)
-  applyFeePlan(base, closing)
-  eq('apply: reminder marked paid', base.reminders[0].status, 'paid')
-  eq('apply: no open reminders left',
-    base.reminders.filter((r) => r.status === 'pending' || r.status === 'sent').length, 0)
-
-  // an inactive student is never chased
-  const gone: AppData = JSON.parse(JSON.stringify(buildEmptyData()))
-  gone.students = [{ ...base.students[0], active: false }]
-  eq('arrears: inactive student owes nothing', unpaidMonthsFor(gone, gone.students[0], NOW), [])
-  eq('plan: inactive student gets no reminder', planFeeReminders(gone, NOW).create.length, 0)
-
-  // a student who joined mid-window is not chased for months before joining
-  const joined: AppData = JSON.parse(JSON.stringify(buildEmptyData()))
-  joined.students = [{ ...base.students[0], id: 'j', joinedOn: PREV + '-01', active: true }]
-  const jm = unpaidMonthsFor(joined, joined.students[0], NOW)
-  eq('arrears: nothing owed before joining', jm, [PREV, NOW])
-}
+   A migration that fails those assertions cannot be applied.
+   ================================================================= */
 
 /* ================= month phrasing ================= */
 eq('phrase: one month', monthsPhrase(['2026-07']), 'July')

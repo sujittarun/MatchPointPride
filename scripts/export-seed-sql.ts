@@ -97,6 +97,7 @@ p("delete from payments    where tenant_id = 'mpp' and ref like 'SEED-%';")
 // of 0018 doubled them: 32 became 64. Idempotency you have not tested
 // by running it twice is a guess.
 p("delete from expenses    where tenant_id = 'mpp' and ref like 'SEED-%';")
+p("delete from reminder_events where tenant_id = 'mpp';")
 p("delete from attendance  where tenant_id = 'mpp' and kind = 'staff';")
 p("delete from enrollments where tenant_id = 'mpp' and member_id in")
 p("  (select id from members where tenant_id = 'mpp' and is_demo);")
@@ -188,6 +189,23 @@ for (const s of data.students as Student[]) {
   p(`          current_date + ${renewalOffset(idx)},`)
   p(`          ${discontinued ? "'discontinued'" : "'active'"}, ${last.to ? `${q(last.to)}::date` : 'null'})`)
   p(`  returning id into v_enr;`)
+
+  /* The fees this student has actually paid, through the one write path.
+     record_fee_payment is what sets period_from/period_to — the record of
+     which month a payment covers — and without it the app reads every
+     student as never having paid, which is what the first seed did. */
+  const paid = (data.transactions as Transaction[]).filter(
+    (t) => t.type === 'revenue' && t.source === 'student_fee' && t.studentId === s.id,
+  )
+  for (const t of paid) {
+    p(`  perform record_fee_payment('${T}', v_enr, ${n(Math.round(t.amount))}, 1, 'UPI', 'renewal',`)
+    p(`                             ${q(t.date)}::date, ${q(`SEED-F-${s.id}-${t.date}`)});`)
+  }
+  /* record_fee_payment rolls renewal_on forward on every payment, which
+     is correct behaviour and exactly why it cannot be left where it
+     lands here: the spread below is what puts one student on each rung
+     of the ladder. Set after, not before. */
+  p(`  update enrollments set renewal_on = current_date + ${renewalOffset(idx)} where id = v_enr;`)
 }
 p()
 

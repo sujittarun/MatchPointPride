@@ -20,7 +20,7 @@ import {
   uid,
 } from '../lib/format'
 import {
-  ARREARS_MONTHS,
+  ATTRIBUTABLE_MONTHS,
   collectionRate,
   expenseByCategory,
   moneyByMonth,
@@ -395,7 +395,7 @@ function TxnSheet({
   const owedMonths = chosenStudent ? unpaidMonthsFor(data, chosenStudent) : []
   /* Offer every month in the arrears window so a mistake can be corrected,
      but mark which are actually outstanding. */
-  const monthChoices = lastMonths(ARREARS_MONTHS)
+  const monthChoices = lastMonths(ATTRIBUTABLE_MONTHS)
 
   const save = () => {
     const amt = Number(amount)
