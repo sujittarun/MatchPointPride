@@ -573,6 +573,17 @@ eq('a week is the line, and a week is enough',
    firstDueDate(8, '2026-08-01'), '2026-08-08')
 eq('six days is not', firstDueDate(7, '2026-08-01'), '2026-09-07')
 eq('skipping still clamps in a short month', firstDueDate(31, '2026-01-28'), '2026-02-28')
+/* The skip is for the UNPAID. Someone who settles on the day has
+   already covered the stub, so the plain next billing day stands and
+   their payment carries them to the one after. Skipping as well would
+   stack two graces and sell a month for five weeks. */
+eq('unpaid on the 29th waits for September', firstDueDate(1, '2026-07-29'), '2026-09-01')
+eq('paid on the 29th starts at the very next billing day', nextDueDate(1, '2026-07-29'), '2026-08-01')
+ok('so paying on the day never buys longer than not paying',
+   ['2026-07-29','2026-03-30','2026-11-28'].every(function (j) {
+     return [1, 5, 15].every(function (d) { return nextDueDate(d, j) <= firstDueDate(d, j) })
+   }))
+
 ok('no first fee ever lands sooner than a week after joining',
    ['2026-01-09','2026-02-20','2026-03-31','2026-07-29','2026-11-27'].every(function (j) {
      return [1, 5, 15, 28, 31].every(function (d) {

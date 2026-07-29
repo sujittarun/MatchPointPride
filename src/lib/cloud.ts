@@ -435,6 +435,11 @@ export async function addStudent(a: {
   feeDueDay: number
   /** Only when the owner overrode the batch fee for this student. */
   customFee?: number | null
+  /**
+   * Did they hand money over on the day? It decides where the cycle
+   * starts, and only that.
+   */
+  settledOnJoining?: boolean
   note?: string
 }): Promise<{ memberId: number; enrollmentId: number }> {
   const members = (await request('POST', '/members', {
@@ -460,10 +465,16 @@ export async function addStudent(a: {
     plan_months: 1,
     custom_amount: a.customFee ?? null,
     joined_on: a.joinedOn,
-    // Anchored to the joining date, not to today — and skipping a
-    // billing day that lands within a week of it, so nobody is asked
-    // for a month's fee three days after signing up.
-    renewal_on: firstDueDate(a.feeDueDay, a.joinedOn),
+    /* The skip exists to protect someone who has NOT paid: asking for
+       a month's fee three days after they signed up is an ambush. It is
+       the wrong answer for someone who just paid. Their payment covers
+       the stub, so the plain next billing day stands and
+       record_fee_payment carries them from there to the one after —
+       otherwise the two graces stack and a month's money buys five
+       weeks. */
+    renewal_on: a.settledOnJoining
+      ? nextDueDate(a.feeDueDay, a.joinedOn)
+      : firstDueDate(a.feeDueDay, a.joinedOn),
     status: 'active',
   })) as Array<{ id: number }>
   const enrollmentId = enrolments?.[0]?.id

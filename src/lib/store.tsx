@@ -597,6 +597,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             feeDueDay: input.feeDueDay,
             customFee: input.customFee ?? null,
             note: input.note,
+            settledOnJoining: !!input.paidNow && input.paidNow > 0,
           })
           /* Registering and paying are two things, and the second one is
              optional. If money changed hands it goes through the same
