@@ -1275,3 +1275,37 @@ ul {
     padding-bottom: 16px;
   }
 }
+
+/* --- load state, when Postgres is the only store --- */
+.loadbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 9px 16px;
+  font-size: 13px;
+  color: var(--ink-secondary);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line);
+}
+
+.loadbar--bad {
+  color: var(--ink-primary);
+  background: color-mix(in srgb, var(--critical) 14%, var(--surface-1));
+  border-bottom-color: color-mix(in srgb, var(--critical) 40%, transparent);
+}
+
+.loadbar button {
+  flex: none;
+  padding: 5px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-strong, var(--line));
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}

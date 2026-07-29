@@ -1,34 +1,27 @@
 import { useRef, useState, type ChangeEvent } from 'react'
 import { useStore } from '../lib/store'
-import { navigate } from '../lib/router'
 import { todayISO } from '../lib/format'
-import { ACADEMY } from '../lib/academy'
 import {
   downloadText,
   studentsFromCSV,
   studentsToCSV,
   type ImportReport,
 } from '../lib/csv'
-import { Confirm, Field, Sheet } from '../components/ui'
+import { Field, Sheet } from '../components/ui'
 import {
   IconAlert,
   IconDownload,
   IconLock,
   IconUpload,
-  IconUsers,
 } from '../components/icons'
 
 export default function Settings() {
   const {
-    data, exportJSON, importJSON, resetToDemo, startFresh, toast, saveStudent,
+    data, exportJSON, toast, saveStudent,
   } = useStore()
-
-  const backupRef = useRef<HTMLInputElement | null>(null)
   const csvRef = useRef<HTMLInputElement | null>(null)
 
   const [passOpen, setPassOpen] = useState(false)
-  const [confirmFresh, setConfirmFresh] = useState(false)
-  const [confirmDemo, setConfirmDemo] = useState(false)
   const [report, setReport] = useState<ImportReport | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -102,17 +95,15 @@ export default function Settings() {
     }
   }
 
-  const onBackupFile = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      const res = importJSON(String(reader.result))
-      toast(res.message, res.ok ? 'good' : 'bad')
-    }
-    reader.readAsText(file)
-    e.target.value = ''
-  }
+  /* Restore, Start fresh and Reload demo are gone.
+
+     All three rewrote a local document, and there is no local document
+     — the next read from Postgres replaced whatever they wrote, so the
+     button appeared to work and changed nothing. Clearing the academy's
+     real data is a deliberate act that belongs in the operator console,
+     not behind a button on the owner's phone. */
+
+
 
   return (
     <main className="page">
@@ -128,7 +119,7 @@ export default function Settings() {
         <div className="card__head">
           <div>
             <div className="card__title">PIN</div>
-            <div className="card__sub">The 4 digits on the login screen</div>
+            <div className="card__sub">The digits on the login screen</div>
           </div>
         </div>
 
@@ -149,8 +140,9 @@ export default function Settings() {
         >
           <IconAlert size={17} style={{ color: '#ffd166', flexShrink: 0, marginTop: 1 }} />
           <p className="t-mut" style={{ lineHeight: 1.5 }}>
-            The PIN hides the app on a shared phone — it is not real security. The page is
-            public, so anyone with the link can reach the data stored in that browser.
+            The PIN unlocks this phone's saved sign-in — it is the key the session is
+            encrypted with, not a password checked in the page. Someone with the link and
+            no PIN reaches nothing.
           </p>
         </div>
       </div>
@@ -182,6 +174,18 @@ export default function Settings() {
           style={{ display: 'none' }}
         />
 
+        {report && (
+          <p className={report.ok ? 't-mut' : 't-bad'} style={{ marginTop: 12, lineHeight: 1.5 }}>
+            {report.message}
+            {report.skipped.length > 0 && (
+              <>
+                {' '}
+                Skipped: {report.skipped.map((x) => `${x.name} (${x.why})`).join(', ')}.
+              </>
+            )}
+          </p>
+        )}
+
         <ul className="t-mut" style={{ marginTop: 12, lineHeight: 1.6 }}>
           <li>
             • Only <b>Name</b> and <b>Batch</b> are required — the batch name has to match one
@@ -196,7 +200,7 @@ export default function Settings() {
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="card__head">
           <div>
-            <div className="card__title">Backup &amp; restore</div>
+            <div className="card__title">Backup</div>
             <div className="card__sub">
               {data.transactions.length} transactions · {data.attendance.length} attendance
               records
@@ -217,125 +221,21 @@ export default function Settings() {
         >
           <IconAlert size={17} style={{ color: '#8bbcf3', flexShrink: 0, marginTop: 1 }} />
           <p className="t-mut" style={{ lineHeight: 1.5 }}>
-            Everything lives in this browser on this phone. Clearing browser data, or
-            switching phones, loses it. <strong>Download a backup regularly</strong> — it
-            restores everything on any device.
+            Everything is kept in the academy database, not on this phone. Clearing
+            browser data or switching phones loses nothing —{' '}
+            <strong>sign in again and it is all there</strong>. A backup is still worth
+            downloading now and then as your own copy.
           </p>
         </div>
 
         <div className="row gap-8">
           <button className="btn btn--primary grow" onClick={backup} disabled={busy}>
-            <IconDownload size={16} /> {busy ? 'Packing…' : 'Backup'}
-          </button>
-          <button className="btn grow" onClick={() => backupRef.current?.click()}>
-            <IconUpload size={16} /> Restore
-          </button>
-        </div>
-        <input
-          ref={backupRef}
-          type="file"
-          accept="application/json,.json"
-          onChange={onBackupFile}
-          style={{ display: 'none' }}
-        />
-
-        <hr className="divider" style={{ margin: '16px 0' }} />
-
-        <div className="col gap-8">
-          <button className="btn btn--danger" onClick={() => setConfirmFresh(true)}>
-            Clear everything and start fresh
-          </button>
-          <button className="btn btn--ghost btn--sm" onClick={() => setConfirmDemo(true)}>
-            Reload the demo dataset
+            <IconDownload size={16} /> {busy ? 'Packing…' : 'Download a backup'}
           </button>
         </div>
       </div>
 
-      <p className="t-mut" style={{ textAlign: 'center', padding: '8px 0 4px', lineHeight: 1.5 }}>
-        {ACADEMY.name} · {ACADEMY.location}
-      </p>
-
       <PinSheet open={passOpen} onClose={() => setPassOpen(false)} />
-
-      {/* import result */}
-      <Sheet
-        open={report !== null}
-        onClose={() => setReport(null)}
-        title={report?.ok ? 'Import finished' : 'Nothing imported'}
-        subtitle={report?.message}
-        footer={
-          <button className="btn btn--primary" onClick={() => setReport(null)}>
-            Done
-          </button>
-        }
-      >
-        {report && (
-          <>
-            <div className="grid grid-2" style={{ marginBottom: 14 }}>
-              <div className="stat" style={{ ['--accent' as string]: 'var(--good)' }}>
-                <div className="t-label">Added</div>
-                <div className="stat__value num">{report.added}</div>
-              </div>
-              <div className="stat" style={{ ['--accent' as string]: 'var(--series-1)' }}>
-                <div className="t-label">Updated</div>
-                <div className="stat__value num">{report.updated}</div>
-              </div>
-            </div>
-
-            {report.skipped.length > 0 && (
-              <>
-                <div className="t-label" style={{ marginBottom: 8 }}>
-                  Skipped {report.skipped.length}
-                </div>
-                <div className="col gap-6">
-                  {report.skipped.slice(0, 25).map((s, i) => (
-                    <div className="listrow" key={i} style={{ minHeight: 44, padding: '9px 12px' }}>
-                      <IconUsers size={15} className="t-mut" />
-                      <div className="listrow__main">
-                        <div className="listrow__title" style={{ fontSize: '0.83rem' }}>
-                          Row {s.row} · {s.name}
-                        </div>
-                        <div className="listrow__meta">{s.why}</div>
-                      </div>
-                    </div>
-                  ))}
-                  {report.skipped.length > 25 && (
-                    <p className="t-mut">…and {report.skipped.length - 25} more.</p>
-                  )}
-                </div>
-              </>
-            )}
-          </>
-        )}
-      </Sheet>
-
-      <Confirm
-        open={confirmFresh}
-        title="Start fresh?"
-        body="All students, staff, attendance, reminders and transactions are deleted. The six batches stay. Download a backup first if you're unsure."
-        confirmLabel="Clear everything"
-        onCancel={() => setConfirmFresh(false)}
-        onConfirm={() => {
-          startFresh()
-          setConfirmFresh(false)
-          toast('Cleared. Ready for real data.')
-          navigate('/app')
-        }}
-      />
-
-      <Confirm
-        open={confirmDemo}
-        title="Reload demo data?"
-        body="This replaces everything currently in the app with the sample dataset. Any real data you've entered will be lost."
-        confirmLabel="Reload demo"
-        onCancel={() => setConfirmDemo(false)}
-        onConfirm={() => {
-          resetToDemo()
-          setConfirmDemo(false)
-          toast('Demo data reloaded.')
-          navigate('/app')
-        }}
-      />
     </main>
   )
 }

@@ -45,7 +45,7 @@ const TITLES: Record<string, string> = {
 
 export default function App() {
   const path = useRoute()
-  const { authed, data, logout } = useStore()
+  const { authed, data, logout, loading, loadError, refresh } = useStore()
 
   // Anything under the shell requires the gate; bounce back to landing.
   useEffect(() => {
@@ -72,8 +72,26 @@ export default function App() {
   const activeTab =
     TABS.find((t) => path === t.path || path.startsWith(t.path + '/'))?.path ?? ''
 
+  /* The database is the only store now, so a failed read is not a
+     cosmetic problem — the screen is empty and the owner has no idea
+     why. Say which, and offer the retry, rather than showing an app
+     that looks like an academy with no students. */
+  const banner = loadError ? (
+    <div className="loadbar loadbar--bad" role="alert">
+      <span>{loadError}</span>
+      <button type="button" onClick={() => void refresh()}>
+        Try again
+      </button>
+    </div>
+  ) : loading && data.students.length === 0 ? (
+    <div className="loadbar">
+      <span>Loading the academy…</span>
+    </div>
+  ) : null
+
   return (
     <div className="shell">
+      {banner}
       <header className="topbar">
         <div className="topbar__inner">
           <div className="brandmark">
