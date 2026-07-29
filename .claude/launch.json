@@ -1,11 +1,6 @@
 {
   "version": "0.0.1",
   "configurations": [
-    {
-      "name": "matchpoint-dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 5173
-    }
+    { "name": "mpp-dev", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "--", "--port", "5177"], "port": 5177 }
   ]
 }

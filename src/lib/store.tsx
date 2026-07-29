@@ -12,6 +12,7 @@ import type { AppData, Settings } from './types'
 import { buildEmptyData, buildSeedData, DEFAULT_SETTINGS } from './seed'
 import { applyFeePlan, isFeePlanEmpty, planFeeReminders } from './selectors'
 import { allImages, putRaw } from './images'
+import { reportIssue } from './telemetry'
 
 const KEY = 'mpp.data.v1'
 const AUTH_KEY = 'mpp.auth.v1'
@@ -179,6 +180,9 @@ function save(data: AppData): string | null {
     return null
   } catch (err) {
     console.error('Could not save.', err)
+    // The owner sees a toast and taps it away. Without this line nobody
+    // ever finds out the change was lost.
+    reportIssue('save', err)
     const quota =
       err instanceof DOMException &&
       (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED')
@@ -256,8 +260,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return
     }
     const err = save(data)
-    // Only nag once per failure streak, not on every keystroke.
-    if (err && err !== lastSaveError.current) toast(err, 'bad')
+    if (err) {
+      /* The page has already said "Student added." — it says that the
+         moment the state changes, and the save happens here, one render
+         later. Both toasts then sit on screen contradicting each other,
+         and the cheerful one is the lie: the row is in memory and will
+         be gone on reload. Retract it rather than argue with it.
+
+         Done here, centrally, because twenty-three call sites toast
+         success and not one of them can know whether it stuck. */
+      setToasts((t) => t.filter((x) => x.tone !== 'good'))
+      // Only nag once per failure streak, not on every keystroke.
+      if (err !== lastSaveError.current) toast(err, 'bad')
+    }
     lastSaveError.current = err
   }, [data, toast])
 

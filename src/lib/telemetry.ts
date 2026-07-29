@@ -26,7 +26,10 @@ const ANON =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVnc2tsY2lwenlpb2d4eW5zaG5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4OTUyMzksImV4cCI6MjA5ODQ3MTIzOX0.w7xkjdTkYN2qA0oxMKLUNtua0ScKVHKQzfEyIayh9eo'
 
 const TENANT = 'mpp'
-const VER = __APP_VERSION__
+// Vite substitutes this at build time. The test bundle has no `define`,
+// and a module-level throw there takes the whole suite down with a
+// ReferenceError that says nothing about the real cause — so fall back.
+const VER = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev'
 
 /** One error is a bug; forty are the same bug in a render loop. */
 const MAX_REPORTS = 5
@@ -70,6 +73,13 @@ export type ErrorReport = {
   /** file:line:col, or the React component stack for render errors */
   src?: string | null
   stack?: string | null
+  /**
+   * 'crash' — it threw and the screen broke.
+   * 'operation' — the app coped, but the work did not happen.
+   * The second is the one that goes unnoticed, so Academy Manager
+   * needs to be able to tell them apart.
+   */
+  kind?: 'crash' | 'operation'
 }
 
 export function reportError(e: ErrorReport): void {
@@ -90,6 +100,7 @@ export function reportError(e: ErrorReport): void {
         msg,
         src: e.src ? String(e.src).slice(0, 120) : null,
         stack: e.stack ? String(e.stack).slice(0, 300) : null,
+        kind: e.kind ?? 'crash',
         ver: VER,
         ua: device(),
         vw: viewport(),
@@ -113,6 +124,36 @@ export function reportError(e: ErrorReport): void {
   } catch {
     /* nothing about telemetry is worth breaking the app for */
   }
+}
+
+/**
+ * A failure the app HANDLED — a save that did not save, a delete that
+ * did not delete.
+ *
+ * These matter more than crashes, and are invisible without this. A
+ * crash is loud: the screen goes blank and the owner rings you. A
+ * failed save shows a toast, the owner taps it away, and three weeks
+ * later a student is missing with nothing anywhere to say why.
+ *
+ * Reported as `client_error` on purpose, so it lands in the same
+ * platform_errors() view Academy Manager already reads — no second
+ * pipe, no second thing to remember to look at. `kind` tells them
+ * apart.
+ */
+export function reportIssue(op: string, err: unknown): void {
+  // Deliberately no varying detail — no byte counts, no ids, no names.
+  // platform_errors() groups on the message, so anything that differs
+  // between two occurrences of the same fault splits it into two rows
+  // and destroys the count. The first version of this included the
+  // document size and produced exactly that: one bug, two entries,
+  // "x1" each.
+  const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err ?? '')
+  reportError({
+    msg: `${op} failed${detail ? ` — ${detail}` : ''}`,
+    src: op,
+    stack: err instanceof Error ? (err.stack ?? null) : null,
+    kind: 'operation',
+  })
 }
 
 /** Uncaught throws and rejected promises outside React's tree. */
