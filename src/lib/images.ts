@@ -59,6 +59,19 @@ export async function compress(file: File | Blob): Promise<string> {
   return canvas.toDataURL('image/jpeg', QUALITY)
 }
 
+/**
+ * The same downscale, as a Blob for upload.
+ *
+ * A phone screenshot is 2-4 MB and the useful part is a few hundred
+ * kilobytes; uploading the original wastes the owner's data allowance
+ * on a photo of a bank app.
+ */
+export async function compressToBlob(file: File | Blob): Promise<Blob> {
+  const dataUrl = await compress(file)
+  const res = await fetch(dataUrl)
+  return res.blob()
+}
+
 export async function putImage(file: File | Blob): Promise<string> {
   const dataUrl = await compress(file)
   const id = `img_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`

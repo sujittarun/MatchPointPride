@@ -195,6 +195,9 @@ export function toTransactions(payments: PaymentRow[], expenses: ExpenseRow[]): 
         : p.enrollment_id ? 'student_fee' : 'other',
     studentId: p.member_id ? String(p.member_id) : undefined,
     note: p.note ?? undefined,
+    // The object key, not a URL: links to a private bucket expire, so
+    // one is asked for at the moment it is shown.
+    proofImageId: p.proof_path ?? undefined,
     createdAt: p.on_date,
   }))
 

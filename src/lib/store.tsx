@@ -214,7 +214,7 @@ interface Ctx {
   loadError: string | null
   saveBatch: (a: { id?: string; name: string; days: number[]; startTime: string; endTime: string; capacity?: number | null; fee: number }) => Promise<{ ok: boolean; message: string }>
   removeBatch: (id: string) => Promise<{ ok: boolean; message: string }>
-  recordFee: (a: { enrollmentId: number; amount: number; onDate?: string; mode?: string; note?: string }) => Promise<{ ok: boolean; message: string }>
+  recordFee: (a: { enrollmentId: number; amount: number; onDate?: string; mode?: string; note?: string }) => Promise<{ ok: boolean; message: string; paymentId?: number }>
   addRevenue: (a: { label: string; amount: number; onDate: string; kind: 'Court' | 'Membership' | 'Coaching'; note?: string }) => Promise<{ ok: boolean; message: string }>
   addExpense: (a: { category: string; amount: number; onDate: string; note?: string }) => Promise<{ ok: boolean; message: string }>
   logReminderSent: (a: { enrollmentId: number; stage: string; amount: number | null; phone: string | null; body: string; channel: 'whatsapp' | 'sms' | 'call' }) => Promise<{ ok: boolean; message: string }>
@@ -463,10 +463,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      write path: it rolls the renewal forward, writes the period the
      money covers, and closes the reminder, in one transaction. Inserting
      into payments directly would record the money and none of that. */
+  /* Returns the payment id as well, because the screenshot object is
+     keyed on it — the attachment cannot be named until the money exists. */
   const recordFee = useCallback(
-    (a: { enrollmentId: number; amount: number; onDate?: string; mode?: string; note?: string }) =>
-      write('record fee', () => cloudRecordPayment(a)),
-    [write],
+    async (a: { enrollmentId: number; amount: number; onDate?: string; mode?: string; note?: string }) => {
+      if (!isSignedIn()) return { ok: false, message: 'Not signed in to the academy database.' }
+      try {
+        const out = await cloudRecordPayment(a)
+        await refresh()
+        return { ok: true, message: '', paymentId: out?.payment_id }
+      } catch (err) {
+        reportIssue('record fee', err)
+        return {
+          ok: false,
+          message: err instanceof Error ? err.message : 'Could not save to the academy database.',
+        }
+      }
+    },
+    [refresh],
   )
 
   const addRevenue = useCallback(

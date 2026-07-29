@@ -9,6 +9,12 @@ import { installErrorReporting, trackOpen } from './lib/telemetry'
 installErrorReporting()
 trackOpen()
 
+/* Ask the browser to keep our storage. Safari grants this to installed
+   home-screen apps and refuses it for a plain tab, which is the whole
+   reason for the manifest — the only thing at stake is the sealed
+   session, but losing it means the owner digs out his password. */
+void navigator.storage?.persist?.().catch(() => {})
+
 // The boundary sits outside StoreProvider on purpose: a crash while
 // reading or migrating stored data is exactly the case where the owner
 // most needs a readable screen instead of a blank one.

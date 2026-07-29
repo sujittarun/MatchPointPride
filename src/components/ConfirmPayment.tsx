@@ -4,7 +4,9 @@ import { useStore } from '../lib/store'
 import type { Reminder } from '../lib/types'
 import { currentMonthKey, inr } from '../lib/format'
 import { monthsPhrase, studentById } from '../lib/selectors'
-import { getImage, putImage } from '../lib/images'
+import { attachProof, proofUrl } from '../lib/cloud'
+import { compressToBlob } from '../lib/images'
+import { reportIssue } from '../lib/telemetry'
 import { Sheet } from './ui'
 import {
   IconAlert,
@@ -27,11 +29,17 @@ export function ProofImage({ id, height = 150 }: { id: string; height?: number }
 
   useEffect(() => {
     let alive = true
-    getImage(id).then((v) => {
-      if (!alive) return
-      if (v) setSrc(v)
-      else setMissing(true)
-    })
+    /* `id` is an object key in a private bucket, so a fresh signed URL
+       is asked for each time it is shown. Not cached deliberately: the
+       link is the only thing between a bank screenshot and whoever gets
+       hold of it, so it should expire. */
+    proofUrl(id)
+      .then((url) => {
+        if (!alive) return
+        if (url) setSrc(url)
+        else setMissing(true)
+      })
+      .catch(() => alive && setMissing(true))
     return () => {
       alive = false
     }
@@ -40,7 +48,7 @@ export function ProofImage({ id, height = 150 }: { id: string; height?: number }
   if (missing) {
     return (
       <div className="t-mut" style={{ padding: '10px 0' }}>
-        Screenshot not found on this device.
+        Screenshot could not be loaded.
       </div>
     )
   }
@@ -133,10 +141,13 @@ export function ConfirmPayment({
   reminder: Reminder | null
   onClose: () => void
 }) {
-  const { data, toast, recordFee } = useStore()
+  const { data, toast, recordFee, refresh } = useStore()
   const fileRef = useRef<HTMLInputElement | null>(null)
 
-  const [imageId, setImageId] = useState<string | null>(null)
+  /* Held in memory until the payment row exists, because the object is
+     keyed on the payment id. Nothing is written to the device. */
+  const [pending, setPending] = useState<Blob | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
   const [method, setMethod] = useState<Method | null>(null)
   const [busy, setBusy] = useState(false)
   const [key, setKey] = useState<string | null>(null)
@@ -144,7 +155,8 @@ export function ConfirmPayment({
   const openKey = reminder?.id ?? null
   if (openKey !== key) {
     setKey(openKey)
-    setImageId(null)
+    setPending(null)
+    setPreview(null)
     setMethod(null)
     setBusy(false)
   }
@@ -164,8 +176,9 @@ export function ConfirmPayment({
     if (!file) return
     setBusy(true)
     try {
-      const id = await putImage(file)
-      setImageId(id)
+      const small = await compressToBlob(file)
+      setPending(small)
+      setPreview(URL.createObjectURL(small))
       setMethod(null)
     } catch {
       toast('Could not read that image. Try another one.', 'bad')
@@ -174,7 +187,7 @@ export function ConfirmPayment({
     }
   }
 
-  const evidenced = imageId !== null || method !== null
+  const evidenced = pending !== null || method !== null
 
   const confirm = async () => {
     /* record_fee_payment does all of it in one transaction: writes the
@@ -189,11 +202,26 @@ export function ConfirmPayment({
     const res = await recordFee({
       enrollmentId: student.enrollmentId,
       amount: total,
-      note: imageId ? 'screenshot attached' : (method ?? undefined),
+      note: pending ? 'screenshot attached' : (method ?? undefined),
     })
     if (!res.ok) {
       toast(res.message, 'bad')
       return
+    }
+
+    /* The money is recorded. The screenshot is attached second and on
+       purpose: if the upload fails the payment still stands, and the
+       owner is told the proof did not attach rather than losing both. */
+    if (pending && res.paymentId) {
+      try {
+        await attachProof(res.paymentId, pending)
+        await refresh()
+      } catch (err) {
+        reportIssue('attach proof', err)
+        toast('Payment saved, but the screenshot did not upload.', 'bad')
+        onClose()
+        return
+      }
     }
     toast(
       months.length > 1
@@ -238,13 +266,24 @@ export function ConfirmPayment({
         Payment screenshot
       </div>
 
-      {imageId ? (
+      {preview ? (
         <div style={{ marginBottom: 14 }}>
-          <ProofImage id={imageId} height={190} />
+          {/* Local preview until the payment exists — the upload is named
+              after the payment id, so it cannot happen before the money
+              is recorded. */}
+          <img
+            src={preview}
+            alt="Payment screenshot"
+            style={{ width: '100%', height: 190, objectFit: 'cover', borderRadius: 'var(--r-md)' }}
+          />
           <button
             className="btn btn--sm btn--danger btn--block"
             style={{ marginTop: 8 }}
-            onClick={() => setImageId(null)}
+            onClick={() => {
+              if (preview) URL.revokeObjectURL(preview)
+              setPending(null)
+              setPreview(null)
+            }}
           >
             <IconTrash size={14} /> Remove
           </button>
@@ -269,7 +308,7 @@ export function ConfirmPayment({
       />
 
       {/* ---------- no screenshot: verify another way ---------- */}
-      {!imageId && (
+      {!pending && (
         <>
           <div
             className="row gap-10"

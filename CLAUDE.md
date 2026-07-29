@@ -106,8 +106,16 @@ one of the helpers in `store.tsx`, lands in the database, and is read
 straight back.
 
 What is still on the device, and should be: the sealed session vault
-(`vault.ts`), the PIN attempt ladder, and payment screenshots in
-IndexedDB.
+(`vault.ts`) and the PIN attempt ladder. Nothing else — payment
+screenshots now go to the private `payment-proofs` bucket, keyed
+`<tenant>/<payment_id>.<ext>`, read back through a short-lived signed
+URL. Never make that bucket public: they are bank screenshots.
+
+The app ships a manifest so a home-screen icon on iOS is a real
+installed app rather than a Safari bookmark. Without it, script-writable
+storage is cleared after seven days of Safari use without opening the
+site, which would wipe the sealed session and send the owner back to his
+password.
 
 **Two things were removed rather than faked.** One-off custom reminders
 and cancel/delete on a fee reminder: the list is `reminder_queue()`'s

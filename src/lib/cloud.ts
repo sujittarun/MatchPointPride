@@ -664,6 +664,81 @@ export async function deleteExpense(id: number): Promise<void> {
   track('expense_removed', {})
 }
 
+/* ---------------- payment screenshots ---------------- */
+
+/**
+ * Upload the proof and attach it to the payment.
+ *
+ * Two steps on purpose. record_fee_payment moves money and is not
+ * rewritten to carry an image: if this second step fails you have a
+ * payment correctly recorded and an unreferenced object, which is a far
+ * better outcome than a money function nobody has exercised.
+ *
+ * The bucket is private. Reading one back means asking for a signed URL
+ * with a staff session — these are bank screenshots, with an account
+ * name, a handle and an amount on them.
+ */
+export async function attachProof(paymentId: number, file: Blob): Promise<string> {
+  const ext =
+    file.type === 'image/png' ? 'png'
+      : file.type === 'image/webp' ? 'webp'
+        : file.type === 'image/heic' ? 'heic'
+          : 'jpg'
+  const path = `${TENANT}/${paymentId}.${ext}`
+
+  if (!session) throw new CloudError('Not signed in', 401)
+  if (session.expires_at - Date.now() < 60_000) await refresh()
+
+  const res = await fetch(`${PROJECT}/storage/v1/object/payment-proofs/${path}`, {
+    method: 'POST',
+    headers: {
+      apikey: ANON,
+      Authorization: `Bearer ${session?.access_token ?? ''}`,
+      'Content-Type': file.type || 'image/jpeg',
+      'x-upsert': 'true',
+    },
+    body: file,
+  })
+  if (!res.ok) {
+    const t = await res.text()
+    throw new CloudError(t.slice(0, 160) || 'Could not upload the screenshot.', res.status)
+  }
+
+  await request('PATCH', `/payments?id=eq.${paymentId}&tenant_id=eq.${TENANT}`, {
+    proof_path: path,
+  })
+  track('payment_proof_attached', {})
+  return path
+}
+
+/**
+ * A short-lived URL for one screenshot.
+ *
+ * Signed rather than public, and not cached: the link is the only thing
+ * standing between a bank screenshot and anyone who gets hold of it, so
+ * it should expire.
+ */
+export async function proofUrl(path: string, seconds = 300): Promise<string | null> {
+  try {
+    if (!session) return null
+    if (session.expires_at - Date.now() < 60_000) await refresh()
+    const res = await fetch(`${PROJECT}/storage/v1/object/sign/payment-proofs/${path}`, {
+      method: 'POST',
+      headers: {
+        apikey: ANON,
+        Authorization: `Bearer ${session?.access_token ?? ''}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ expiresIn: seconds }),
+    })
+    if (!res.ok) return null
+    const out = (await res.json()) as { signedURL?: string }
+    return out.signedURL ? `${PROJECT}/storage/v1${out.signedURL}` : null
+  } catch {
+    return null
+  }
+}
+
 /* ---------------- staff ---------------- */
 
 export async function saveStaff(a: {
@@ -799,6 +874,7 @@ export type PaymentRow = {
   status: string | null
   ref: string | null
   note: string | null
+  proof_path: string | null
 }
 export type CoachRow = { id: number; name: string; role: string; phone: string | null; active: boolean }
 export type ExpenseRow = {
@@ -850,7 +926,7 @@ export const read = {
   payments: (sinceISO: string) =>
     select<PaymentRow>(
       'payments',
-      `select=id,member_id,enrollment_id,type,kind,amount,mode,on_date,period_from,period_to,status,ref,note&on_date=gte.${sinceISO}&order=on_date.desc`,
+      `select=id,member_id,enrollment_id,type,kind,amount,mode,on_date,period_from,period_to,status,ref,note,proof_path&on_date=gte.${sinceISO}&order=on_date.desc`,
     ),
   coaches: () => select<CoachRow>('coaches', 'select=id,name,role,phone,active&order=name'),
   expenses: (sinceISO: string) =>
