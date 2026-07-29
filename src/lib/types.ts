@@ -58,6 +58,8 @@ export interface Student {
   feePending?: boolean
   /** Day of month the fee falls due (1-31; short months clamp to their last day). */
   feeDueDay: number
+  /** The actual next due date, so a change to the day knows what it moves from. */
+  renewalOn?: string
   active: boolean
   note?: string
   /**

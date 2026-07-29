@@ -146,6 +146,7 @@ export function toStudents(
       monthlyFee: resolved ?? 0,
       feePending: resolved === null,
       feeDueDay: e.renewal_on ? Number(e.renewal_on.slice(8, 10)) : 1,
+      renewalOn: e.renewal_on ?? undefined,
       active,
       note: m.notes ?? undefined,
       spells: history.map((x) => ({

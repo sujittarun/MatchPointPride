@@ -489,6 +489,10 @@ export async function updateStudent(a: {
   batchId: number
   customFee?: number | null
   note?: string
+  /** The billing day the owner wants from now on. */
+  feeDueDay?: number
+  /** What it is today, so an unchanged day is left alone. */
+  currentRenewalOn?: string
 }): Promise<void> {
   await request('PATCH', `/members?id=eq.${a.memberId}&tenant_id=eq.${TENANT}`, {
     name: a.name,
@@ -496,10 +500,23 @@ export async function updateStudent(a: {
     parent_phone: a.phone,
     notes: a.note ?? null,
   })
-  await request('PATCH', `/enrollments?id=eq.${a.enrollmentId}&tenant_id=eq.${TENANT}`, {
+
+  /* Moving the billing day.
+     Anchored to their CURRENT due date, not to today, so the new day is
+     the next one on or after what they already owe. That direction is
+     deliberate: it can never pull a due date backwards, so correcting a
+     fee day cannot turn a paid-up student into an overdue one, and it
+     cannot invent a chase. */
+  const patch: Record<string, unknown> = {
     batch_id: a.batchId,
     custom_amount: a.customFee ?? null,
-  })
+  }
+  if (a.feeDueDay && a.currentRenewalOn) {
+    const moved = nextDueDate(a.feeDueDay, a.currentRenewalOn)
+    if (moved !== a.currentRenewalOn) patch.renewal_on = moved
+  }
+
+  await request('PATCH', `/enrollments?id=eq.${a.enrollmentId}&tenant_id=eq.${TENANT}`, patch)
   track('student_updated', {})
 }
 

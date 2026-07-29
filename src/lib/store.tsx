@@ -240,6 +240,8 @@ interface Ctx {
     feeDueDay: number
     customFee?: number | null
     active: boolean
+    /** Their current due date, so changing the fee day knows what it moves. */
+    currentRenewalOn?: string
     note?: string
   }) => Promise<{ ok: boolean; message: string }>
   /** Re-read everything. Called after any write, because the database
@@ -529,6 +531,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       feeDueDay: number
       customFee?: number | null
       active: boolean
+      currentRenewalOn?: string
       note?: string
     }) => {
       if (!isSignedIn()) {
@@ -551,6 +554,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             batchId,
             customFee: input.customFee ?? null,
             note: input.note,
+            feeDueDay: input.feeDueDay,
+            currentRenewalOn: input.currentRenewalOn,
           })
           /* Not gated on a previous status. The Remove button, the CSV
              import and the student page all call this with active:false

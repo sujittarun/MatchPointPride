@@ -149,6 +149,7 @@ export function StudentSheet({
       customFee:
         fee.trim() === '' || feeVal === (feeOf(batch) ?? -1) ? null : feeVal,
       active,
+      currentRenewalOn: s?.renewalOn,
     })
     setSaving(false)
 

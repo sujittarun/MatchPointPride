@@ -558,6 +558,17 @@ eq('a return dated in the future bills from the future date',
 ok('a backdated return lands in the past, so the ladder can see it',
    nextDueDate(27, '2026-06-15') < '2026-07-29')
 
+/* Moving an existing student's billing day.
+   Anchored to what they currently owe, never to today, so correcting a
+   fee day can only ever push the next due date later. Pulling it
+   earlier would turn a paid-up student overdue and invent a chase out
+   of an admin correction. */
+eq('later day in the same cycle', nextDueDate(15, '2026-08-01'), '2026-08-15')
+eq('earlier day waits for the next cycle', nextDueDate(5, '2026-08-20'), '2026-09-05')
+eq('the same day is no change at all', nextDueDate(1, '2026-08-01'), '2026-08-01')
+ok('moving the billing day never pulls a due date backwards',
+   [1, 5, 12, 20, 28, 31].every((d) => nextDueDate(d, '2026-08-14') >= '2026-08-14'))
+
 /* ================= the students the ladder gave up on =================
    Past +15 days the platform stops messaging and hands over to a
    person. That handover used to go nowhere: the reminder dropped out of
