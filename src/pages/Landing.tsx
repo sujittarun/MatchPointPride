@@ -180,6 +180,14 @@ function SetupForm({ onDone }: { onDone: () => void }) {
         Sign in once with the academy account. After this the app opens with your PIN —
         you will not need the password again on this phone.
       </p>
+      {/* Setting up a second time usually means the phone's storage was
+          cleared, not that anything is wrong. The PIN itself is never
+          stored — only a blob it decrypts — so there is nothing left to
+          recover and the app genuinely cannot know the old one. Say the
+          same PIN is fine, or he will sit here wondering. */}
+      <p className="setup__note setup__note--quiet">
+        Done this before? Use the same PIN as last time — it still works.
+      </p>
 
       <label className="field">
         <span>Academy email</span>
@@ -223,7 +231,7 @@ function SetupForm({ onDone }: { onDone: () => void }) {
       </div>
 
       <label className="field">
-        <span>Choose a PIN</span>
+        <span>Your PIN</span>
         <input
           inputMode="numeric"
           type="password"
@@ -234,7 +242,7 @@ function SetupForm({ onDone }: { onDone: () => void }) {
       </label>
 
       <label className="field">
-        <span>Confirm PIN</span>
+        <span>Type it again</span>
         <input
           inputMode="numeric"
           type="password"

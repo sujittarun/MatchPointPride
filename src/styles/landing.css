@@ -424,3 +424,11 @@
 
 .setup__err { font-size: 13px; color: var(--critical); }
 .setup__go { margin-top: 4px; }
+
+/* The reassurance for a repeat setup — present, but not competing with
+   the instruction above it. */
+.setup__note--quiet {
+  margin-top: -6px;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
