@@ -1160,6 +1160,71 @@ ul {
 
 /* Desktop: keep the phone column, just give it breathing room.
    Deliberate — the app is built for and used on a phone. */
+/* --- crash fallback (ErrorBoundary) --- */
+.crash {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 24px calc(32px + env(safe-area-inset-bottom));
+  text-align: center;
+}
+
+.crash__mark {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--critical) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--critical) 42%, transparent);
+  color: var(--critical);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.crash__title {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--ink-primary);
+}
+
+.crash__body {
+  max-width: 34ch;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-secondary);
+}
+
+.crash__action {
+  margin-top: 4px;
+  min-width: 180px;
+}
+
+.crash__note {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+/* The raw message, kept quiet — it is for a screenshot, not for reading. */
+.crash__detail {
+  margin-top: 8px;
+  max-width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  color: var(--ink-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
 @media (min-width: 780px) {
   .page {
     padding-left: 0;

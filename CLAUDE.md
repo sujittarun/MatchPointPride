@@ -49,9 +49,11 @@ money-first; never leave TypeScript and Postgres both computing fees.
 
 1. ~~Delete `docs/data-model.sql`~~ (done — its `uuid` PKs contradicted
    the live `tenants.id text` / `batches.id bigint`; it must never run).
-2. `src/lib/telemetry.ts` + an ErrorBoundary, posting `client_error` to
-   `events` so this app stops being invisible to Academy Manager.
-3. Insert the `mpp` row in `tenants`, `config.modules.booking = false`.
+2. ~~`src/lib/telemetry.ts` + an ErrorBoundary~~ (done — uncaught throws
+   and rejections post `client_error` to `events`; Academy Manager reads
+   them through `platform_errors()`. No student data is ever sent).
+3. ~~Insert the `mpp` row in `tenants`~~ (done — migration `0006`,
+   `modules.booking = false`, `features.publicTimetable = false`).
 4. `src/lib/cloud.ts` — plain `fetch` against PostgREST. Delete
    `selectors.ts:236-468` and the reminder replan in `store.tsx`. Call
    `resolve_fee`, `record_fee_payment`, `apply_payment_coverage`,
