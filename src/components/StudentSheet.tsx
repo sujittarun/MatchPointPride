@@ -3,6 +3,7 @@ import { useStore } from '../lib/store'
 import type { Student } from '../lib/types'
 import {
   MAX_AMOUNT,
+  inr,
   clampDay,
   dateLabelFull,
   nonNegative,
@@ -53,6 +54,10 @@ export function StudentSheet({
   const [key, setKey] = useState('')
 
   const feeOf = (id: string) => data.batches.find((b) => b.id === id)?.fee
+  const batchName = data.batches.find((b) => b.id === batch)?.name ?? 'the batch'
+  /* Quiet while it is the batch's own rate; full strength the moment
+     it is overridden, so the styling says which it is. */
+  const inheritedFee = fee.trim() === '' || nonNegative(fee) === (feeOf(batch) ?? -1)
 
   // The mode is part of the key: switching an inactive student from
   // "edit" to "bring back" has to re-run the reset below, because a new
@@ -307,9 +312,16 @@ export function StudentSheet({
           </select>
         </Field>
 
-        <Field label="Monthly fee (₹)">
+        <Field
+          label="Monthly fee (₹)"
+          hint={
+            inheritedFee
+              ? `${batchName}'s rate. Change it only for this student.`
+              : `Just for this student — ${batchName} stays at ${inr(feeOf(batch) ?? 0)}.`
+          }
+        >
           <input
-            className="input"
+            className={`input${inheritedFee ? ' input--inherited' : ''}`}
             type="number"
             inputMode="numeric"
             min={0}
@@ -318,28 +330,6 @@ export function StudentSheet({
             placeholder="2000"
           />
         </Field>
-
-        {(isNew || rejoining) && (
-          <Field
-            label="Paid now (₹)"
-            hint={
-              nonNegative(paidNow) > 0
-                ? 'Recorded straight away as their first payment.'
-                : 'Nothing taken today. They will show as not paid yet, and you can Mark paid when the money arrives.'
-            }
-            span
-          >
-            <input
-              className="input"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              value={paidNow}
-              onChange={(e) => setPaidNow(e.target.value)}
-              placeholder="0"
-            />
-          </Field>
-        )}
 
         <Field
           label="Fee due on"
@@ -361,6 +351,36 @@ export function StudentSheet({
             onChange={(e) => setDueDay(e.target.value)}
           />
         </Field>
+
+        {(isNew || rejoining) && (
+          <>
+            <div
+              className="t-label"
+              style={{ gridColumn: '1 / -1', marginTop: 4, paddingTop: 12, borderTop: '1px solid var(--line)' }}
+            >
+              Money today
+            </div>
+            <Field
+              label="Paid now (₹)"
+              hint={
+                nonNegative(paidNow) > 0
+                  ? `Recorded straight away. Their next fee is then a month on.`
+                  : 'Nothing taken today — a normal thing to record. They show on Home as not paid yet until you Mark paid.'
+              }
+              span
+            >
+              <input
+                className={`input${nonNegative(paidNow) > 0 ? ' input--live' : ''}`}
+                type="number"
+                inputMode="numeric"
+                min={0}
+                value={paidNow}
+                onChange={(e) => setPaidNow(e.target.value)}
+                placeholder="0"
+              />
+            </Field>
+          </>
+        )}
 
         <Field label="Joined on" span>
           <input

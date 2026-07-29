@@ -1348,3 +1348,37 @@ ul {
   70%  { transform: scale(3.2); opacity: 0; }
   100% { transform: scale(3.2); opacity: 0; }
 }
+
+/* ------------------------------------------------------------------
+   Inherited vs decided.
+
+   Two money fields sit next to each other on the student sheet and mean
+   completely different things: the monthly rate, which almost always
+   comes from the batch and is left alone, and what the parent actually
+   handed over today, which is a fresh decision every time. Given equal
+   weight they read as a pair of numbers to fill in, and the wrong one
+   gets the attention.
+
+   So the inherited one is quiet WHILE it is inherited, and comes to
+   full strength the moment it is overridden — the styling reports a
+   fact rather than decorating a field. It stays fully editable
+   throughout; focus brings it up regardless.
+   ------------------------------------------------------------------ */
+input.input--inherited {
+  color: var(--ink-secondary);
+  background: transparent;
+  border-style: dashed;
+}
+input.input--inherited:hover { border-color: var(--line-strong); }
+input.input--inherited:focus {
+  color: var(--ink-primary);
+  background: var(--surface-2);
+  border-style: solid;
+}
+
+/* The one being decided today. */
+input.input--live {
+  border-color: var(--brand);
+  background: var(--brand-wash);
+  font-weight: 600;
+}
