@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useStore } from '../lib/store'
 import { navigate } from '../lib/router'
 import type { Student } from '../lib/types'
-import { currentMonthKey, inr, initials, todayISO, uid } from '../lib/format'
+import { currentMonthKey, inr, initials, ordinal, todayISO, uid } from '../lib/format'
 import { studentsOf } from '../lib/selectors'
 import { ACADEMY } from '../lib/academy'
 import { Confirm, Empty, Stat } from '../components/ui'
@@ -213,8 +213,7 @@ export default function BatchDetail({ id }: { id: string }) {
                     {!s.active && <span className="badge badge--mute" style={{ marginLeft: 7 }}>Inactive</span>}
                   </div>
                   <div className="listrow__meta">
-                    {inr(s.monthlyFee)} · due {s.feeDueDay}
-                    {s.feeDueDay === 1 ? 'st' : s.feeDueDay === 2 ? 'nd' : s.feeDueDay === 3 ? 'rd' : 'th'}
+                    {inr(s.monthlyFee)} · due {ordinal(s.feeDueDay)}
                   </div>
                 </div>
                 <div className="listrow__end">

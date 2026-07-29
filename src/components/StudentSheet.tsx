@@ -6,6 +6,7 @@ import {
   clampDay,
   dateLabelFull,
   nonNegative,
+  ordinal,
   todayISO,
   uid,
 } from '../lib/format'
@@ -212,7 +213,14 @@ export function StudentSheet({
           />
         </Field>
 
-        <Field label="Fee due day" hint="1–28">
+        <Field
+          label="Fee due on"
+          hint={
+            dueDay.trim()
+              ? `The ${ordinal(clampDay(dueDay))} of every month. Reminders are dated from this.`
+              : 'Day of the month the fee is due. Reminders are dated from this.'
+          }
+        >
           <input
             className="input"
             type="number"

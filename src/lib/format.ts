@@ -161,6 +161,22 @@ export function nonNegativeOrUndef(v: string | number): number | undefined {
   return n > 0 ? n : undefined
 }
 
+/** 1 → "1st", 22 → "22nd", 13 → "13th". */
+export function ordinal(n: number): string {
+  const teens = n % 100
+  if (teens >= 11 && teens <= 13) return `${n}th`
+  switch (n % 10) {
+    case 1:
+      return `${n}st`
+    case 2:
+      return `${n}nd`
+    case 3:
+      return `${n}rd`
+    default:
+      return `${n}th`
+  }
+}
+
 export function clampDay(v: string | number): number {
   const n = typeof v === 'number' ? v : Number(String(v).trim())
   if (!Number.isFinite(n)) return 1
