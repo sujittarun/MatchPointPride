@@ -143,7 +143,6 @@ export function StudentSheet({
       // otherwise the batch rule keeps owning it.
       customFee: feeVal === (feeOf(batch) ?? -1) ? null : feeVal,
       active,
-      wasActive: s?.active,
     })
     setSaving(false)
 

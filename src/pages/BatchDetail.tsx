@@ -3,7 +3,7 @@ import { useStore } from '../lib/store'
 import { navigate } from '../lib/router'
 import type { Student } from '../lib/types'
 import { currentMonthKey, inr, initials, ordinal } from '../lib/format'
-import { paidForMonth, studentsOf, unpaidMonthsFor } from '../lib/selectors'
+import { activeStudentsOf, paidForMonth, unpaidMonthsFor } from '../lib/selectors'
 import { ACADEMY } from '../lib/academy'
 import { Confirm, Empty, Stat } from '../components/ui'
 import { seriesColor } from '../components/charts'
@@ -29,7 +29,11 @@ export default function BatchDetail({ id }: { id: string }) {
   const [editStudent, setEditStudent] = useState<Student | 'new' | null>(null)
   const [delStudent, setDelStudent] = useState<Student | null>(null)
 
-  const roster = useMemo(() => (batch ? studentsOf(data, batch.id) : []), [data, batch])
+  /* Who is training, not who ever trained. A batch someone left two
+     years ago is not their batch any more, and a roster that keeps them
+     only ever grows — the owner scrolls past leavers to find the people
+     actually on court. They are still one search away on Batches. */
+  const roster = useMemo(() => (batch ? activeStudentsOf(data, batch.id) : []), [data, batch])
   const thisMonth = currentMonthKey()
 
   const paidThisMonth = useMemo(() => {
@@ -58,9 +62,8 @@ export default function BatchDetail({ id }: { id: string }) {
     )
   }
 
-  const active = roster.filter((s) => s.active)
-  const monthlyValue = active.reduce((a, s) => a + s.monthlyFee, 0)
-  const collected = active
+  const monthlyValue = roster.reduce((a, s) => a + s.monthlyFee, 0)
+  const collected = roster
     .filter((s) => paidThisMonth.has(s.id))
     .reduce((a, s) => a + s.monthlyFee, 0)
   const color = seriesColor(batch.colorSlot)
@@ -153,7 +156,7 @@ export default function BatchDetail({ id }: { id: string }) {
       <div className="grid grid-2" style={{ marginBottom: 18 }}>
         <Stat
           label="Active"
-          value={String(active.length)}
+          value={String(roster.length)}
           foot={batch.capacity ? `of ${batch.capacity} seats` : 'students'}
           accent={color}
         />
@@ -219,10 +222,7 @@ export default function BatchDetail({ id }: { id: string }) {
                     cursor: 'pointer',
                   }}
                 >
-                  <div className="listrow__title">
-                    {s.name}
-                    {!s.active && <span className="badge badge--mute" style={{ marginLeft: 7 }}>Inactive</span>}
-                  </div>
+                  <div className="listrow__title">{s.name}</div>
                   <div className="listrow__meta">
                     {inr(s.monthlyFee)} · due {ordinal(s.feeDueDay)}
                   </div>
@@ -232,7 +232,7 @@ export default function BatchDetail({ id }: { id: string }) {
                     <span className="badge badge--good">
                       <IconCheck size={11} /> Paid
                     </span>
-                  ) : s.active ? (
+                  ) : (
                     <button
                       className="btn btn--sm"
                       style={{ minHeight: 32, padding: '5px 10px', fontSize: '0.75rem' }}
@@ -240,7 +240,7 @@ export default function BatchDetail({ id }: { id: string }) {
                     >
                       Mark paid
                     </button>
-                  ) : null}
+                  )}
                   <div className="row gap-2">
                     {s.phone && (
                       <a
@@ -312,7 +312,7 @@ export default function BatchDetail({ id }: { id: string }) {
       <Confirm
         open={delStudent !== null}
         title={`Remove ${delStudent?.name ?? ''}?`}
-        body="Their open reminders are removed too. Past payments stay in Finance."
+        body="They come off this roster and out of the reminder list. Past payments stay in Finance, and you can bring them back later from the search on Batches."
         confirmLabel="Remove"
         onCancel={() => setDelStudent(null)}
         onConfirm={() => {

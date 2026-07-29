@@ -225,8 +225,8 @@ interface Ctx {
    *
    * Which of the four it is comes from the ids: no memberId is a new
    * person; a memberId with no enrollmentId is someone returning; both
-   * is an edit, and `wasActive` is what tells an edit apart from a
-   * discontinue.
+   * is an edit. `active: false` on an edit discontinues them, whatever
+   * they were before.
    */
   saveStudent: (input: {
     id?: string
@@ -240,8 +240,6 @@ interface Ctx {
     feeDueDay: number
     customFee?: number | null
     active: boolean
-    /** Their status before this save. Absent for a new student. */
-    wasActive?: boolean
     note?: string
   }) => Promise<{ ok: boolean; message: string }>
   /** Re-read everything. Called after any write, because the database
@@ -531,7 +529,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       feeDueDay: number
       customFee?: number | null
       active: boolean
-      wasActive?: boolean
       note?: string
     }) => {
       if (!isSignedIn()) {
@@ -555,7 +552,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             customFee: input.customFee ?? null,
             note: input.note,
           })
-          if (input.wasActive === true && !input.active) {
+          /* Not gated on a previous status. The Remove button, the CSV
+             import and the student page all call this with active:false
+             and nothing else, so a gate that needed one more field meant
+             every one of them silently did nothing — the student was
+             "removed" and stayed on the roll. discontinue_member is
+             idempotent, so calling it on someone already gone closes
+             nothing and writes no timeline row. */
+          if (!input.active) {
             await cloudDiscontinue({ memberId: input.memberId })
           }
         } else if (input.memberId) {
