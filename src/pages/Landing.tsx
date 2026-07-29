@@ -2,7 +2,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import '../styles/landing.css'
 import { lockedForMs, useStore } from '../lib/store'
 import { navigate } from '../lib/router'
-import { isEnrolled, pinLength } from '../lib/vault'
+import { forget as forgetVault, isEnrolled, pinLength } from '../lib/vault'
 import { Sheet } from '../components/ui'
 import { IconLock, IconTrophy, IconWhatsApp } from '../components/icons'
 import BrandMark from '../components/BrandMark'
@@ -280,11 +280,13 @@ function PasscodeSheet({
   const [code, setCode] = useState('')
   const [err, setErr] = useState(false)
   const [lockMs, setLockMs] = useState(0)
+  const [forgotten, setForgotten] = useState(false)
 
   useEffect(() => {
     if (!open) {
       setCode('')
       setErr(false)
+      setForgotten(false)
     }
   }, [open])
 
@@ -327,6 +329,19 @@ function PasscodeSheet({
   const press = (d: string) => {
     if (err || locked) return
     setCode((c) => (c.length >= pinLen ? c : c + d))
+  }
+
+  if (forgotten) {
+    return (
+      <Sheet
+        open={open}
+        onClose={onClose}
+        title="Sign in with your password"
+        subtitle="Then pick a PIN again"
+      >
+        <SetupForm onDone={() => navigate('/app')} />
+      </Sheet>
+    )
   }
 
   if (!enrolled) {
@@ -388,6 +403,22 @@ function PasscodeSheet({
           Delete
         </button>
       </div>
+
+      {/* Without this the only way back to the password was failing ten
+          times through escalating lockouts — thirty seconds, then a
+          minute, then five, then fifteen — which punishes forgetting.
+          Forgetting the vault is safe: it holds a refresh token, not the
+          records, and the records are in the database. */}
+      <button
+        type="button"
+        className="pin-forgot"
+        onClick={() => {
+          forgetVault()
+          setForgotten(true)
+        }}
+      >
+        Forgot your PIN? Sign in with your password
+      </button>
     </Sheet>
   )
 }
