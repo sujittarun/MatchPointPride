@@ -242,6 +242,11 @@ interface Ctx {
     active: boolean
     /** Their current due date, so changing the fee day knows what it moves. */
     currentRenewalOn?: string
+    /**
+     * What they handed over on the day, if anything. Zero means they
+     * walked in without paying — the app says so rather than assuming.
+     */
+    paidNow?: number
     note?: string
   }) => Promise<{ ok: boolean; message: string }>
   /** Re-read everything. Called after any write, because the database
@@ -532,6 +537,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       customFee?: number | null
       active: boolean
       currentRenewalOn?: string
+      paidNow?: number
       note?: string
     }) => {
       if (!isSignedIn()) {
@@ -581,7 +587,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             customFee: input.customFee ?? null,
           })
         } else {
-          await cloudAddStudent({
+          const made = await cloudAddStudent({
             name: input.name,
             phone: input.phone,
             guardian: input.guardian,
@@ -592,6 +598,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             customFee: input.customFee ?? null,
             note: input.note,
           })
+          /* Registering and paying are two things, and the second one is
+             optional. If money changed hands it goes through the same
+             record_fee_payment as every other rupee — never an insert,
+             so the renewal rolls and the timeline is written exactly as
+             it would be for a payment taken next month. Nothing paid
+             leaves them plainly unpaid, which the app then shows. */
+          if (input.paidNow && input.paidNow > 0) {
+            await cloudRecordPayment({ enrollmentId: made.enrollmentId, amount: input.paidNow })
+          }
         }
         await refresh()
         return { ok: true, message: '' }

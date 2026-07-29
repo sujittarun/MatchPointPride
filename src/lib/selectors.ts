@@ -461,6 +461,45 @@ export function needsACall(data: AppData): Reminder[] {
     .sort((a, b) => (b.daysSince ?? 0) - (a.daysSince ?? 0))
 }
 
+/**
+ * How long a student may be on the roll having paid nothing before the
+ * app says so. Matches the ladder's first chase, because five days is
+ * five days whether it is a renewal or a first fee.
+ */
+export const UNPAID_GRACE_DAYS = 5
+
+/**
+ * On the roll, and has not paid a rupee this spell.
+ *
+ * The renewal ladder cannot see these students. It chases a date, and
+ * their date has not arrived — someone who joins on the 2nd with a fee
+ * day of the 1st is not late until September. So registering without
+ * taking money used to make a student who trained for a month while the
+ * app sat silent, with nothing anywhere saying they had never paid.
+ *
+ * Measured from the CURRENT spell, not from their first ever payment,
+ * so someone who trained for two years, left, and came back owing their
+ * first fee again is counted properly.
+ */
+export function awaitingFirstPayment(data: AppData, today = todayISO()): Student[] {
+  const paidSince = new Map<string, string>()
+  for (const t of data.transactions) {
+    if (t.type !== 'revenue' || t.source !== 'student_fee' || !t.studentId) continue
+    const prev = paidSince.get(t.studentId)
+    if (!prev || t.date > prev) paidSince.set(t.studentId, t.date)
+  }
+  return data.students
+    .filter((s) => {
+      if (!s.active) return false
+      const spell = spellsOf(s)
+      const from = spell[spell.length - 1].from
+      if (daysBetween(from, today) < UNPAID_GRACE_DAYS) return false
+      const last = paidSince.get(s.id)
+      return !last || last < from
+    })
+    .sort((a, b) => (spellsOf(a)[spellsOf(a).length - 1].from < spellsOf(b)[spellsOf(b).length - 1].from ? -1 : 1))
+}
+
 /** Everything the platform will not message, with the reason. */
 export function blockedReminders(data: AppData): Reminder[] {
   return data.reminders

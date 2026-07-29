@@ -10,7 +10,7 @@ import {
   renderReminderMessage, reminderStats, revenueBySource, smsLink,
   staffLifetime, staffMonthStats, workingDays, whatsappLink,
   monthsPhrase, paidForMonth, unpaidMonthsFor,
-  findExisting, phoneKey, sameName, needsACall, blockedReminders,
+  findExisting, phoneKey, sameName, needsACall, blockedReminders, awaitingFirstPayment,
 } from '../src/lib/selectors'
 import { toStudents } from '../src/lib/mapping'
 import type { EnrollmentRow, MemberRow } from '../src/lib/cloud'
@@ -622,6 +622,56 @@ ok('a missing phone is blocked but is not "stopped chasing"',
    !needsACall(withBlocks).some((r) => r.id === 'c'))
 eq('every blocked reason is still reachable somewhere',
    blockedReminders(withBlocks).map((r) => r.id), ['a', 'b', 'c'])
+
+/* ================= registered, never paid =================
+   The renewal ladder chases a DATE. A student who joins on the 2nd with
+   a fee day of the 1st has no date yet, so the ladder is blind to them
+   and they train a month while the app says nothing. This is what
+   catches them, and it measures from the current spell — someone who
+   paid for two years, left, and came back owing again must count. */
+const S_ = (id: string, from: string, active = true) => ({
+  id, name:'S' + id, batchId:'1', phone:'9000000000', joinedOn:from, monthlyFee:2000,
+  feeDueDay:1, active, spells:[{ from }],
+}) as unknown as AppData['students'][number]
+const T_ = (studentId: string, date: string) => ({
+  id:'t' + studentId + date, type:'revenue', source:'student_fee', studentId, date,
+  amount:2000, category:'Coaching', createdAt:date,
+}) as unknown as AppData['transactions'][number]
+
+const roll2 = {
+  ...buildEmptyData(),
+  students: [
+    S_('a', '2026-07-01'),                    // joined weeks ago, never paid
+    S_('b', '2026-07-27'),                    // joined 2 days ago — too soon to nag
+    S_('c', '2026-07-01'),                    // joined and paid
+    S_('d', '2026-07-01', false),             // left; not our problem
+  ],
+  transactions: [T_('c', '2026-07-02')],
+} as unknown as AppData
+
+eq('caught: on the roll a fortnight, nothing received',
+   awaitingFirstPayment(roll2, '2026-07-29').map((s) => s.id), ['a'])
+ok('two days in is not yet a problem',
+   !awaitingFirstPayment(roll2, '2026-07-29').some((s) => s.id === 'b'))
+ok('someone who paid is not on the list',
+   !awaitingFirstPayment(roll2, '2026-07-29').some((s) => s.id === 'c'))
+ok('someone who left is not on the list',
+   !awaitingFirstPayment(roll2, '2026-07-29').some((s) => s.id === 'd'))
+eq('day five is the line', awaitingFirstPayment(roll2, '2026-08-01').map((s) => s.id).sort(), ['a', 'b'])
+
+/* A rejoiner owes their first fee again. Measuring from their oldest
+   payment instead of from this spell would let a long-standing student
+   come back and never be asked. */
+const returner = {
+  ...buildEmptyData(),
+  students: [{ ...S_('r', '2024-01-01'), spells:[{ from:'2024-01-01', to:'2025-06-01' }, { from:'2026-07-01' }] }],
+  transactions: [T_('r', '2024-02-01'), T_('r', '2025-05-01')],
+} as unknown as AppData
+eq('a returning student owes again, however much they paid before',
+   awaitingFirstPayment(returner, '2026-07-29').map((s) => s.id), ['r'])
+eq('and drops off the moment they pay for THIS spell',
+   awaitingFirstPayment({ ...returner, transactions:[...returner.transactions, T_('r', '2026-07-06')] } as AppData,
+     '2026-07-29').length, 0)
 
 /* ================= finding someone already on file =================
    Name AND number. A parent's phone carries all their children, so a

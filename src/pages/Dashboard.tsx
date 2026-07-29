@@ -5,6 +5,7 @@ import {
   inr,
   lastMonths,
   monthLabel,
+  dateLabelFull,
   monthShort,
   todayISO,
   weekday,
@@ -13,6 +14,7 @@ import {
   activeStudentsOf,
   dashboard,
   moneyByMonth,
+  awaitingFirstPayment,
   needsACall,
 } from '../lib/selectors'
 import { Stat } from '../components/ui'
@@ -25,6 +27,7 @@ import {
   IconBell,
   IconChevronRight,
   IconPlus,
+  IconRupee,
   IconStaff,
 } from '../components/icons'
 
@@ -33,6 +36,7 @@ export default function Dashboard() {
   const [addStudent, setAddStudent] = useState(false)
   const d = useMemo(() => dashboard(data), [data])
   const stopped = useMemo(() => needsACall(data), [data])
+  const unpaid = useMemo(() => awaitingFirstPayment(data), [data])
   const months = useMemo(() => lastMonths(6), [])
   const series = useMemo(() => moneyByMonth(data.transactions, months), [data.transactions, months])
 
@@ -124,6 +128,73 @@ export default function Dashboard() {
               onClick={() => navigate('/reminders')}
             >
               See all {stopped.length}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ---------- registered, never paid ----------
+
+          The ladder cannot see these: it chases a date, and their date
+          has not arrived. Someone joining on the 2nd with a fee day of
+          the 1st is not late until September, so without this they
+          train a month while the app says nothing. */}
+      {unpaid.length > 0 && (
+        <div
+          className="card"
+          style={{
+            marginBottom: 14,
+            background: 'rgba(250,178,25,0.09)',
+            borderColor: 'rgba(250,178,25,0.30)',
+          }}
+        >
+          <div className="row gap-10" style={{ alignItems: 'center', marginBottom: 10 }}>
+            <span
+              className="avatar avatar--sm"
+              style={{ background: 'rgba(250,178,25,0.16)', color: '#ffd166' }}
+            >
+              <IconRupee size={15} />
+            </span>
+            <div className="grow">
+              <div className="card__title">
+                {unpaid.length} {unpaid.length === 1 ? 'has' : 'have'} not paid yet
+              </div>
+              <div className="card__sub">On the roll, nothing received since they started</div>
+            </div>
+          </div>
+          <div className="list">
+            {unpaid.slice(0, 4).map((s) => {
+              const b = data.batches.find((x) => x.id === s.batchId)
+              const since = s.spells?.[s.spells.length - 1]?.from ?? s.joinedOn
+              return (
+                <button
+                  key={s.id}
+                  className="listrow tap"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => navigate(`/student/${s.id}`)}
+                >
+                  <div className="listrow__main">
+                    <div className="listrow__title">{s.name}</div>
+                    <div className="listrow__meta">
+                      {b?.name ?? 'No batch'} · joined {dateLabelFull(since)}
+                    </div>
+                  </div>
+                  <div className="listrow__end">
+                    <span className="badge badge--warn">
+                      {s.feePending ? 'No fee set' : inr(s.monthlyFee)}
+                    </span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+          {unpaid.length > 4 && (
+            <button
+              className="btn btn--sm btn--block"
+              style={{ marginTop: 10 }}
+              onClick={() => navigate('/batches')}
+            >
+              See all {unpaid.length}
             </button>
           )}
         </div>

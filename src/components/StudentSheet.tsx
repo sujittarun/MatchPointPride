@@ -47,6 +47,7 @@ export function StudentSheet({
   const [batch, setBatch] = useState(batchId ?? data.batches[0]?.id ?? '')
   const [fee, setFee] = useState('')
   const [dueDay, setDueDay] = useState('1')
+  const [paidNow, setPaidNow] = useState('')
   const [joinedOn, setJoinedOn] = useState(todayISO())
   const [active, setActive] = useState(true)
   const [key, setKey] = useState('')
@@ -75,6 +76,7 @@ export function StudentSheet({
         : String(defaultFee ?? feeOf(startBatch) ?? ''),
     )
     setDueDay(s ? String(s.feeDueDay) : '1')
+    setPaidNow(s && !rejoining ? '' : String(defaultFee ?? feeOf(startBatch) ?? ''))
     // A rejoin starts today. Their original joining date is history, and
     // it is kept — it is the start of their first spell, not this one.
     setJoinedOn(rejoining ? todayISO() : (s?.joinedOn ?? todayISO()))
@@ -98,7 +100,10 @@ export function StudentSheet({
   /* Switching batch on a new student re-applies that batch's fee. */
   const pickBatch = (id: string) => {
     setBatch(id)
-    if (isNew) setFee(String(feeOf(id) ?? ''))
+    if (isNew || rejoining) {
+      setFee(String(feeOf(id) ?? ''))
+      setPaidNow(String(feeOf(id) ?? ''))
+    }
   }
 
   const save = async () => {
@@ -150,6 +155,8 @@ export function StudentSheet({
         fee.trim() === '' || feeVal === (feeOf(batch) ?? -1) ? null : feeVal,
       active,
       currentRenewalOn: s?.renewalOn,
+      // 0 or blank means they walked in without paying.
+      paidNow: isNew || rejoining ? nonNegative(paidNow) : undefined,
     })
     setSaving(false)
 
@@ -311,6 +318,28 @@ export function StudentSheet({
             placeholder="2000"
           />
         </Field>
+
+        {(isNew || rejoining) && (
+          <Field
+            label="Paid now (₹)"
+            hint={
+              nonNegative(paidNow) > 0
+                ? 'Recorded straight away as their first payment.'
+                : 'Nothing taken today. They will show as not paid yet, and you can Mark paid when the money arrives.'
+            }
+            span
+          >
+            <input
+              className="input"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              value={paidNow}
+              onChange={(e) => setPaidNow(e.target.value)}
+              placeholder="0"
+            />
+          </Field>
+        )}
 
         <Field
           label="Fee due on"
