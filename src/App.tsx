@@ -7,6 +7,7 @@ import {
   IconBell,
   IconGear,
   IconHome,
+  IconLogout,
   IconRupee,
   IconStaff,
 } from './components/icons'
@@ -43,7 +44,7 @@ const TITLES: Record<string, string> = {
 
 export default function App() {
   const path = useRoute()
-  const { authed, data } = useStore()
+  const { authed, data, logout } = useStore()
 
   // Anything under the shell requires the gate; bounce back to landing.
   useEffect(() => {
@@ -78,14 +79,26 @@ export default function App() {
               <div className="topbar__sub">{ACADEMY.name}</div>
             </div>
           </div>
-          <button
-            className="btn btn--ghost btn--icon"
-            onClick={() => navigate('/settings')}
-            aria-label="Settings"
-            aria-current={path === '/settings' ? 'page' : undefined}
-          >
-            <IconGear size={21} />
-          </button>
+          <div className="row gap-2" style={{ flexShrink: 0 }}>
+            <button
+              className="btn btn--ghost btn--icon"
+              onClick={() => navigate('/settings')}
+              aria-label="Settings"
+              aria-current={path === '/settings' ? 'page' : undefined}
+            >
+              <IconGear size={21} />
+            </button>
+            <button
+              className="btn btn--ghost btn--icon"
+              onClick={() => {
+                logout()
+                navigate('/')
+              }}
+              aria-label="Log out"
+            >
+              <IconLogout size={21} />
+            </button>
+          </div>
         </div>
       </header>
 

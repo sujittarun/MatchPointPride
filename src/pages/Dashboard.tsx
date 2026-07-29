@@ -13,11 +13,10 @@ import {
   activeStudentsOf,
   dashboard,
   moneyByMonth,
-  staffMonthStats,
 } from '../lib/selectors'
 import { Stat } from '../components/ui'
 import { ACADEMY } from '../lib/academy'
-import { BarChart, HBarChart, Ring, seriesColor } from '../components/charts'
+import { BarChart, HBarChart, seriesColor } from '../components/charts'
 import {
   IconArrowDown,
   IconArrowUp,
@@ -45,15 +44,6 @@ export default function Dashboard() {
         .filter((x) => x.value > 0)
         .sort((a, b) => b.value - a.value),
     [data],
-  )
-
-  const staffRanked = useMemo(
-    () =>
-      data.staff
-        .filter((s) => s.active)
-        .map((s) => ({ staff: s, stats: staffMonthStats(data, s.id, d.thisMonth) }))
-        .sort((a, b) => b.stats.consistency - a.stats.consistency),
-    [data, d.thisMonth],
   )
 
   const today = todayISO()
@@ -193,9 +183,9 @@ export default function Dashboard() {
           accent="var(--warning)"
         />
         <Stat
-          label="Staff on time"
-          value={`${d.staffConsistency.toFixed(0)}%`}
-          foot={`${d.activeStaff} active`}
+          label="Staff today"
+          value={`${d.presentToday}/${d.activeStaff}`}
+          foot={d.unmarked > 0 ? `${d.unmarked} not marked` : 'all marked'}
           accent="var(--good)"
         />
       </div>
@@ -235,49 +225,6 @@ export default function Dashboard() {
             </button>
           </div>
           <HBarChart data={batchMix} format={(n) => `${n}`} />
-        </div>
-      )}
-
-      {/* ---------- staff ---------- */}
-      {staffRanked.length > 0 && (
-        <div className="card" style={{ marginBottom: 14 }}>
-          <div className="card__head">
-            <div>
-              <div className="card__title">Staff consistency</div>
-              <div className="card__sub">{monthLabel(d.thisMonth)}</div>
-            </div>
-            <button className="btn btn--ghost btn--sm" onClick={() => navigate('/staff')}>
-              All
-            </button>
-          </div>
-          <div className="col gap-12">
-            {staffRanked.slice(0, 4).map(({ staff, stats }) => (
-              <button
-                key={staff.id}
-                className="row gap-12 tap"
-                onClick={() => navigate(`/staff/${staff.id}`)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  width: '100%',
-                }}
-              >
-                <Ring value={stats.consistency} size={48} stroke={5} />
-                <div className="grow" style={{ minWidth: 0 }}>
-                  <div className="truncate" style={{ fontSize: '0.875rem', fontWeight: 570 }}>
-                    {staff.name}
-                  </div>
-                  <div className="t-mut truncate">
-                    {staff.role} · {stats.absent} absent of {stats.marked} marked
-                  </div>
-                </div>
-                <IconChevronRight size={16} className="t-mut" />
-              </button>
-            ))}
-          </div>
         </div>
       )}
 

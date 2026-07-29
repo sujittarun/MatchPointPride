@@ -276,13 +276,11 @@ export function dashboard(data: AppData) {
   const activeStudents = data.students.filter((s) => s.active).length
   const activeStaff = data.staff.filter((s) => s.active).length
 
-  const staffConsistency =
-    activeStaff > 0
-      ? data.staff
-          .filter((s) => s.active)
-          .reduce((a, s) => a + staffMonthStats(data, s.id, thisMonth).consistency, 0) /
-        activeStaff
-      : 0
+  /** Who is actually on the floor today — an operational number, not a
+      historical percentage. */
+  const presentToday = todayAttendance(data, todayISO()).filter(
+    (r) => r.status === 'present',
+  ).length
 
   return {
     thisMonth,
@@ -291,7 +289,7 @@ export function dashboard(data: AppData) {
     reminders: rem,
     activeStudents,
     activeStaff,
-    staffConsistency,
+    presentToday,
     overdue: overdueReminders(data).length,
     unmarked: unmarkedToday(data),
   }

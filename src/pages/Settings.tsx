@@ -15,14 +15,13 @@ import {
   IconAlert,
   IconDownload,
   IconLock,
-  IconLogout,
   IconUpload,
   IconUsers,
 } from '../components/icons'
 
 export default function Settings() {
   const {
-    data, exportJSON, importJSON, update, resetToDemo, startFresh, logout, toast,
+    data, exportJSON, importJSON, update, resetToDemo, startFresh, toast,
   } = useStore()
 
   const backupRef = useRef<HTMLInputElement | null>(null)
@@ -102,20 +101,9 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="row gap-8">
-          <button className="btn grow" onClick={() => setPassOpen(true)}>
-            <IconLock size={16} /> Change PIN
-          </button>
-          <button
-            className="btn grow"
-            onClick={() => {
-              logout()
-              navigate('/')
-            }}
-          >
-            <IconLogout size={16} /> Log out
-          </button>
-        </div>
+        <button className="btn btn--block" onClick={() => setPassOpen(true)}>
+          <IconLock size={16} /> Change PIN
+        </button>
 
         <div
           className="row gap-10"

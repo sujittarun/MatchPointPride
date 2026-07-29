@@ -16,7 +16,7 @@ import {
   uid,
 } from '../lib/format'
 import { attendanceMap, staffMonthStats, staffTrend } from '../lib/selectors'
-import { Empty, Field, Sheet, Stat } from '../components/ui'
+import { Empty, Field, Sheet } from '../components/ui'
 import { ATT_COLOR, Ring, ShareBar, Sparkline } from '../components/charts'
 import {
   IconCalendar,
@@ -51,7 +51,6 @@ export default function Staff() {
       : 0
 
   const totalAbsent = teamStats.reduce((a, t) => a + t.stats.absent, 0)
-  const totalPresent = teamStats.reduce((a, t) => a + t.stats.present, 0)
   const unmarked = isSunday(markDate)
     ? 0
     : active.filter((s) => !map.get(`${s.id}__${markDate}`)).length
@@ -213,19 +212,24 @@ export default function Staff() {
         </button>
       </div>
 
-      <div className="grid grid-2" style={{ marginBottom: 16 }}>
-        <Stat
-          label="Team consistency"
-          value={`${teamConsistency.toFixed(0)}%`}
-          foot={monthLabel(month)}
-          accent="var(--good)"
-        />
-        <Stat
-          label="Days absent"
-          value={String(totalAbsent)}
-          foot={`${totalPresent} days worked`}
-          accent="var(--critical)"
-        />
+      {/* One honest summary: the team average, and how many absences sit
+          behind it. Per-person figures belong on the cards below, not in a
+          total that mixes everyone's days together. */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="row gap-14" style={{ alignItems: 'center' }}>
+          <Ring value={teamConsistency} size={64} stroke={7} />
+          <div className="grow" style={{ minWidth: 0 }}>
+            <div className="card__title">{monthLabel(month)}</div>
+            <div className="t-mut" style={{ marginTop: 4, lineHeight: 1.5 }}>
+              {totalAbsent === 0
+                ? `No absences across ${active.length} staff.`
+                : `${totalAbsent} absence${totalAbsent === 1 ? '' : 's'} across ${active.length} staff.`}
+            </div>
+            <div className="t-mut" style={{ marginTop: 2 }}>
+              Average of each person's attendance.
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="section__head">
