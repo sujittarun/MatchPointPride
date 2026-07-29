@@ -22,6 +22,7 @@ import BatchDetail from './pages/BatchDetail'
 import Reminders from './pages/Reminders'
 import Staff from './pages/Staff'
 import StaffDetail from './pages/StaffDetail'
+import StudentDetail from './pages/StudentDetail'
 import Finance from './pages/Finance'
 import Settings from './pages/Settings'
 
@@ -58,12 +59,15 @@ export default function App() {
 
   const batchDetail = match(path, '/batches/:id')
   const staffDetail = match(path, '/staff/:id')
+  const studentDetail = match(path, '/student/:id')
 
-  const title = batchDetail
-    ? 'Batch'
-    : staffDetail
-      ? 'Staff member'
-      : (TITLES[path] ?? 'Match Point Pride')
+  const title = studentDetail
+    ? 'Student'
+    : batchDetail
+      ? 'Batch'
+      : staffDetail
+        ? 'Staff member'
+        : (TITLES[path] ?? 'Match Point Pride')
 
   const activeTab =
     TABS.find((t) => path === t.path || path.startsWith(t.path + '/'))?.path ?? ''
@@ -138,6 +142,9 @@ function Route({ path }: { path: string }) {
 
   const staff = match(path, '/staff/:id')
   if (staff) return <StaffDetail id={staff.id} />
+
+  const student = match(path, '/student/:id')
+  if (student) return <StudentDetail id={student.id} />
 
   switch (path) {
     case '/app':

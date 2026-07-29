@@ -21,10 +21,24 @@ export interface Batch {
   createdAt: string
 }
 
+/** One stretch of time a student was training. */
+export interface Spell {
+  /** YYYY-MM-DD they joined, or rejoined. */
+  from: string
+  /** YYYY-MM-DD they stopped. Absent while they are still training. */
+  to?: string
+}
+
 export interface Student {
   id: string
   name: string
   batchId: string
+  /**
+   * Every period they have been with the academy, oldest first. Someone who
+   * left and came back has two, so tenure skips the gap instead of counting
+   * it. Always at least one entry after `normalise`.
+   */
+  spells?: Spell[]
   /** Digits only, no country code — used to build the WhatsApp link. */
   phone: string
   guardian?: string

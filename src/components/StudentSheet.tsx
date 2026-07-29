@@ -113,6 +113,7 @@ export function StudentSheet({
           phone: phone.replace(/\s/g, ''),
           guardian: guardian.trim() || undefined,
           joinedOn,
+          spells: [{ from: joinedOn }],
           monthlyFee: feeVal,
           feeDueDay: day,
           active,
@@ -120,6 +121,17 @@ export function StudentSheet({
       } else if (s) {
         const t = d.students.find((x) => x.id === s.id)
         if (t) {
+          /* Leaving closes the current period; coming back opens a new one,
+             so a break never counts towards time at the academy — and never
+             counts as months owed either. */
+          t.spells = t.spells?.length ? t.spells : [{ from: t.joinedOn }]
+          if (t.active && !active) {
+            const last = t.spells[t.spells.length - 1]
+            if (last && !last.to) last.to = todayISO()
+          } else if (!t.active && active) {
+            t.spells.push({ from: todayISO() })
+          }
+
           t.name = trimmed
           t.batchId = batch
           t.phone = phone.replace(/\s/g, '')

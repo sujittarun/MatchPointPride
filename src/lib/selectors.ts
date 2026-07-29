@@ -4,17 +4,20 @@ import type {
   AttendanceStatus,
   Batch,
   Reminder,
+  Spell,
   Staff,
   Student,
   Transaction,
 } from './types'
 import {
   currentMonthKey,
+  daysBetween,
   dueDateFor,
   isSunday,
   lastMonths,
   monthDates,
   monthNameFull,
+  shiftMonth,
   todayISO,
   uid,
 } from './format'
@@ -238,6 +241,27 @@ export function paidForMonth(t: Transaction): string {
   return t.forMonth ?? t.date.slice(0, 7)
 }
 
+/** Membership history, always at least one period. */
+export function spellsOf(student: Student): Spell[] {
+  if (student.spells?.length) return student.spells
+  return [{ from: student.joinedOn, ...(student.active ? {} : { to: student.joinedOn }) }]
+}
+
+/** Was the student on the roll at any point during this month? */
+export function wasEnrolledIn(student: Student, monthKey: string): boolean {
+  return spellsOf(student).some(
+    (sp) => sp.from.slice(0, 7) <= monthKey && (!sp.to || sp.to.slice(0, 7) >= monthKey),
+  )
+}
+
+/** Total days on the roll, skipping any break between spells. */
+export function tenureDays(student: Student, today = todayISO()): number {
+  return spellsOf(student).reduce((total, sp) => {
+    const end = sp.to && sp.to < today ? sp.to : today
+    return total + Math.max(0, daysBetween(sp.from, end))
+  }, 0)
+}
+
 /** Unpaid months for one student, oldest first. */
 export function unpaidMonthsFor(
   data: AppData,
@@ -245,15 +269,102 @@ export function unpaidMonthsFor(
   upto = currentMonthKey(),
 ): string[] {
   if (!student.active) return []
-  const joinedMonth = student.joinedOn.slice(0, 7)
   const paid = new Set(
     data.transactions
       .filter((t) => t.source === 'student_fee' && t.studentId === student.id)
       .map(paidForMonth),
   )
   return lastMonths(ARREARS_MONTHS, upto).filter(
-    (m) => m >= joinedMonth && !paid.has(m),
+    // Months they were away are not owed — a break is not a debt.
+    (m) => wasEnrolledIn(student, m) && !paid.has(m),
   )
+}
+
+/* ------------------------------------------------------------------
+   One student's whole story
+   ------------------------------------------------------------------ */
+
+export interface StudentProfile {
+  student: Student
+  batch?: Batch
+  spells: Spell[]
+  tenureDays: number
+  /** True when they left and later came back. */
+  returned: boolean
+  payments: Transaction[]
+  totalPaid: number
+  /**
+   * Recent months, newest first. `chased` marks the months inside the
+   * arrears window — anything older is history, not a debt, and must not
+   * be shown as if the academy is still chasing it.
+   */
+  ledger: Array<{
+    month: string
+    paid: boolean
+    amount: number
+    enrolled: boolean
+    chased: boolean
+  }>
+  /** True when their time here started before the ledger window. */
+  ledgerTruncated: boolean
+  remindersSent: number
+  remindersCount: number
+  unpaidMonths: string[]
+  owed: number
+}
+
+export function studentProfile(data: AppData, studentId: string): StudentProfile | null {
+  const student = data.students.find((s) => s.id === studentId)
+  if (!student) return null
+
+  const payments = data.transactions
+    .filter((t) => t.source === 'student_fee' && t.studentId === studentId)
+    .sort((a, b) => (a.date < b.date ? 1 : -1))
+
+  const paidMonths = new Map<string, number>()
+  for (const t of payments) {
+    paidMonths.set(paidForMonth(t), (paidMonths.get(paidForMonth(t)) ?? 0) + t.amount)
+  }
+
+  const spells = spellsOf(student)
+  const reminders = data.reminders.filter((r) => r.studentId === studentId)
+  const unpaid = unpaidMonthsFor(data, student)
+
+  /* A year of months at most: enough to see a break and a payment pattern,
+     short enough to scroll on a phone. */
+  const LEDGER_MONTHS = 12
+  const firstMonth = spells[0].from.slice(0, 7)
+  const months: string[] = []
+  for (
+    let m = currentMonthKey();
+    m >= firstMonth && months.length < LEDGER_MONTHS;
+    m = shiftMonth(m, -1)
+  ) {
+    months.push(m)
+  }
+  const chasedWindow = new Set(lastMonths(ARREARS_MONTHS))
+
+  return {
+    student,
+    batch: batchById(data, student.batchId),
+    spells,
+    tenureDays: tenureDays(student),
+    returned: spells.length > 1,
+    payments,
+    totalPaid: payments.reduce((a, t) => a + t.amount, 0),
+    ledger: months.map((month) => ({
+      month,
+      enrolled: wasEnrolledIn(student, month),
+      paid: paidMonths.has(month),
+      amount: paidMonths.get(month) ?? 0,
+      chased: chasedWindow.has(month),
+    })),
+    ledgerTruncated: months.length > 0 && months[months.length - 1] > firstMonth,
+    remindersSent: reminders.reduce((a, r) => a + r.sendCount, 0),
+    remindersCount: reminders.length,
+    unpaidMonths: unpaid,
+    owed: unpaid.length * student.monthlyFee,
+  }
 }
 
 export interface FeePlan {

@@ -209,7 +209,18 @@ export default function BatchDetail({ id }: { id: string }) {
                 >
                   {initials(s.name)}
                 </div>
-                <div className="listrow__main">
+                {/* the name is the way into their full history */}
+                <button
+                  className="listrow__main"
+                  onClick={() => navigate(`/student/${s.id}`)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                  }}
+                >
                   <div className="listrow__title">
                     {s.name}
                     {!s.active && <span className="badge badge--mute" style={{ marginLeft: 7 }}>Inactive</span>}
@@ -217,7 +228,7 @@ export default function BatchDetail({ id }: { id: string }) {
                   <div className="listrow__meta">
                     {inr(s.monthlyFee)} · due {ordinal(s.feeDueDay)}
                   </div>
-                </div>
+                </button>
                 <div className="listrow__end">
                   {paid ? (
                     <span className="badge badge--good">

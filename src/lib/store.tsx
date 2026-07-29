@@ -56,6 +56,24 @@ export function normalise(parsed: AppData): AppData {
     return true
   })
 
+  /* Give every student a membership history. Records written before spells
+     existed get one built from `joinedOn`; for someone already inactive we
+     cannot know when they left, so their last recorded fee month is used as
+     the best available estimate. */
+  for (const s of parsed.students) {
+    if (Array.isArray(s.spells) && s.spells.length > 0) continue
+    if (s.active) {
+      s.spells = [{ from: s.joinedOn }]
+    } else {
+      const lastPaid = parsed.transactions
+        .filter((t) => t.source === 'student_fee' && t.studentId === s.id)
+        .map((t) => t.date)
+        .sort()
+        .pop()
+      s.spells = [{ from: s.joinedOn, to: lastPaid ?? s.joinedOn }]
+    }
+  }
+
   // Keep the fee day a real day of the month. Short months are handled
   // when the due date is built, not by rejecting the 29th–31st.
   for (const s of parsed.students) {
