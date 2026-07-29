@@ -11,6 +11,7 @@ import type {
 import {
   addDays,
   currentMonthKey,
+  dueDateFor,
   isSunday,
   lastMonths,
   monthDates,
@@ -172,8 +173,7 @@ function makeTransactions(
     for (const s of students) {
       if (!s.active) continue
       if (rand() > 0.88) continue // a few didn't pay that month
-      const day = Math.min(28, s.feeDueDay + Math.floor(rand() * 6))
-      const date = `${m}-${String(day).padStart(2, '0')}`
+      const date = dueDateFor(m, s.feeDueDay + Math.floor(rand() * 6))
       if (date > today) continue
       const batch = batches.find((b) => b.id === s.batchId)
       out.push({
@@ -256,12 +256,12 @@ function makeReminders(
     for (const s of active) {
       if (rand() > 0.2) continue
       const batch = batches.find((b) => b.id === s.batchId)
-      const dueDay = String(s.feeDueDay).padStart(2, '0')
-      const due = `${m}-${dueDay}`
-      const sentDay = String(Math.min(28, s.feeDueDay + 2)).padStart(2, '0')
+      const due = dueDateFor(m, s.feeDueDay)
+      const dueDay = due.slice(8)
+      const sentDay = dueDateFor(m, s.feeDueDay + 2).slice(8)
       const sentAt = `${m}-${sentDay}T10:30:00.000Z`
       const resent = rand() > 0.72
-      const paidDay = String(Math.min(28, s.feeDueDay + (resent ? 8 : 4))).padStart(2, '0')
+      const paidDay = dueDateFor(m, s.feeDueDay + (resent ? 8 : 4)).slice(8)
       const paidAt = `${m}-${paidDay}T17:15:00.000Z`
 
       const history: Reminder['history'] = [
@@ -269,7 +269,7 @@ function makeReminders(
         { at: sentAt, action: 'sent', channel: 'whatsapp' },
       ]
       if (resent) {
-        const reDay = String(Math.min(28, s.feeDueDay + 6)).padStart(2, '0')
+        const reDay = dueDateFor(m, s.feeDueDay + 6).slice(8)
         history.push({ at: `${m}-${reDay}T11:00:00.000Z`, action: 'resent', channel: 'whatsapp' })
       }
       // Not every reminder lands — some get written off.
@@ -307,7 +307,7 @@ function makeReminders(
     if (!s.active) continue
     if (paidThisMonth.has(s.id)) continue
     const batch = batches.find((b) => b.id === s.batchId)
-    const due = `${thisMonth}-${String(s.feeDueDay).padStart(2, '0')}`
+    const due = dueDateFor(thisMonth, s.feeDueDay)
     out.push({
       id: uid('rem'),
       studentId: s.id,

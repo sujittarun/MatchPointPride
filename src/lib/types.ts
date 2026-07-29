@@ -30,7 +30,7 @@ export interface Student {
   guardian?: string
   joinedOn: string
   monthlyFee: number
-  /** Day of month the fee falls due (1-28). */
+  /** Day of month the fee falls due (1-31; short months clamp to their last day). */
   feeDueDay: number
   active: boolean
   note?: string

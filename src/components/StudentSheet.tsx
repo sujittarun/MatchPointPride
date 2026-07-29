@@ -216,9 +216,11 @@ export function StudentSheet({
         <Field
           label="Fee due on"
           hint={
-            dueDay.trim()
-              ? `The ${ordinal(clampDay(dueDay))} of every month. Reminders are dated from this.`
-              : 'Day of the month the fee is due. Reminders are dated from this.'
+            !dueDay.trim()
+              ? 'Day of the month the fee is due. Reminders are dated from this.'
+              : clampDay(dueDay) > 28
+                ? `The ${ordinal(clampDay(dueDay))} of every month — the last day in shorter months.`
+                : `The ${ordinal(clampDay(dueDay))} of every month. Reminders are dated from this.`
           }
         >
           <input
@@ -226,7 +228,7 @@ export function StudentSheet({
             type="number"
             inputMode="numeric"
             min={1}
-            max={28}
+            max={31}
             value={dueDay}
             onChange={(e) => setDueDay(e.target.value)}
           />

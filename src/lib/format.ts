@@ -177,10 +177,26 @@ export function ordinal(n: number): string {
   }
 }
 
+/**
+ * A fee day as the owner enters it: 1–31. Months shorter than that are
+ * handled when the date is actually built — see `dueDateFor` — rather than
+ * by forbidding the 29th–31st, which are perfectly normal billing days.
+ */
 export function clampDay(v: string | number): number {
   const n = typeof v === 'number' ? v : Number(String(v).trim())
   if (!Number.isFinite(n)) return 1
-  return Math.min(28, Math.max(1, Math.round(n)))
+  return Math.min(31, Math.max(1, Math.round(n)))
+}
+
+/**
+ * The date a fee actually falls due in a given month. A student billed on
+ * the 31st is due on the 30th in April and the 28th in February — the same
+ * way a monthly EMI or subscription behaves.
+ */
+export function dueDateFor(monthKey: string, feeDay: number): string {
+  const last = daysInMonth(monthKey)
+  const day = Math.min(clampDay(feeDay), last)
+  return `${monthKey}-${String(day).padStart(2, '0')}`
 }
 
 export function uid(prefix = 'id'): string {

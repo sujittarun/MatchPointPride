@@ -44,10 +44,11 @@ export function normalise(parsed: AppData): AppData {
     else if (st === 'leave') rec.status = 'absent'
   }
 
-  // Guard against a fee day that can't exist in every month.
+  // Keep the fee day a real day of the month. Short months are handled
+  // when the due date is built, not by rejecting the 29th–31st.
   for (const s of parsed.students) {
-    if (!(s.feeDueDay >= 1 && s.feeDueDay <= 28)) {
-      s.feeDueDay = Math.min(28, Math.max(1, Math.round(s.feeDueDay) || 1))
+    if (!(s.feeDueDay >= 1 && s.feeDueDay <= 31)) {
+      s.feeDueDay = Math.min(31, Math.max(1, Math.round(s.feeDueDay) || 1))
     }
   }
   return parsed

@@ -4,6 +4,7 @@ import type { Reminder, ReminderChannel, ReminderStatus } from '../lib/types'
 import {
   currentMonthKey,
   dateLabelFull,
+  dueDateFor,
   dueLabel,
   inr,
   initials,
@@ -106,7 +107,7 @@ export default function Reminders() {
           kind: 'fee',
           title: `Monthly fee — ${batch?.name ?? 'Batch'}`,
           message: '',
-          dueDate: `${month}-${String(s.feeDueDay).padStart(2, '0')}`,
+          dueDate: dueDateFor(month, s.feeDueDay),
           amount: s.monthlyFee,
           status: 'pending',
           createdAt: now,
