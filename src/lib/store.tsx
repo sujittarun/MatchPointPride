@@ -156,11 +156,28 @@ interface LoadResult {
   error?: string
 }
 
+/* Anyone who used the app before the cutover still has the old document
+   sitting in localStorage — roughly 200KB of student names and parents'
+   phone numbers that nothing will ever read again. Leaving it there is
+   not neutral: it is personal data on a device, kept for no reason, and
+   the point of this change was that it should not be there at all.
+   Cleared once, on boot. */
+function clearLegacyLocalData(): void {
+  for (const k of ['mpp.data.v1', 'mpp.data.v1.corrupt']) {
+    try {
+      if (localStorage.getItem(k) !== null) localStorage.removeItem(k)
+    } catch {
+      /* storage blocked — nothing to clear, and nothing to break */
+    }
+  }
+}
+
 /* Nothing is read from the device any more. The app opens empty and
    fills from Postgres as soon as a session exists — see refresh(). An
    empty shell for that first paint is honest: there genuinely is no
    data yet, and a stale local copy would be a guess dressed as a fact. */
 function load(): LoadResult {
+  clearLegacyLocalData()
   return { data: buildEmptyData() }
 }
 
