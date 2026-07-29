@@ -3,7 +3,7 @@
 import {
   addDays, currentMonthKey, dateLabelFull, daysBetween, daysInMonth, dueLabel,
   clampDay, fromISO, inr, initials, isSunday, lastMonths, monthDates, monthLabel,
-  dueDateFor, ordinal, shiftMonth, toISO, todayISO, uid, weekday,
+  dueDateFor, nextDueDate, ordinal, shiftMonth, toISO, todayISO, uid, weekday,
 } from '../src/lib/format'
 import {
   collectionRate, dashboard, expenseByCategory, moneyByMonth, monthTotals,
@@ -512,6 +512,33 @@ const twoLive = toStudents(
   { 5: 2000 },
 )
 eq('two live enrolments: the earlier one wins, not the last read', twoLive[0].enrollmentId, 10)
+
+/* ================= the next date a fee falls due =================
+   This is what a new student's renewal_on is set to, and what the
+   reminder ladder counts days from. It got two things wrong at once:
+
+   1. It built the date with new Date(y, m, d).toISOString(), which is
+      local midnight converted to UTC — 18:30 the PREVIOUS day in IST.
+      Every renewal was stored a day early, so a student billed on the
+      1st was written as due on the 31st of the month before, and one
+      billed on the 27th came out as the 26th.
+   2. It clamped the billing day to 28, silently, so the 30th and 31st
+      became the 28th for good — while the form promised "the last day
+      in shorter months".
+
+   Both are invisible from a keyboard in London, which is why they are
+   pinned here with an explicit "today" rather than the clock. */
+eq('due later this month', nextDueDate(31, '2026-07-29'), '2026-07-31')
+eq('the billing day has gone by, so next month', nextDueDate(1, '2026-07-29'), '2026-08-01')
+eq('NOT the 31st of the month before', nextDueDate(1, '2026-07-29') > '2026-07-31', true)
+eq('due today counts as due today', nextDueDate(29, '2026-07-29'), '2026-07-29')
+eq('the 27th is the 27th, not the 26th', nextDueDate(27, '2026-07-28'), '2026-08-27')
+eq('the 26th this month while it is still the 25th', nextDueDate(26, '2026-07-25'), '2026-07-26')
+eq('billed on the 31st, in a 30-day month', nextDueDate(31, '2026-09-01'), '2026-09-30')
+eq('billed on the 31st, in February', nextDueDate(31, '2026-02-01'), '2026-02-28')
+eq('billed on the 30th is NOT silently the 28th', nextDueDate(30, '2026-07-01'), '2026-07-30')
+eq('rolls across a year boundary', nextDueDate(5, '2026-12-31'), '2027-01-05')
+eq('leap February', nextDueDate(31, '2024-02-01'), '2024-02-29')
 
 /* ================= finding someone already on file =================
    Name AND number. A parent's phone carries all their children, so a

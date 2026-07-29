@@ -204,6 +204,24 @@ export function clampDay(v: string | number): number {
  * the 31st is due on the 30th in April and the 28th in February — the same
  * way a monthly EMI or subscription behaves.
  */
+/**
+ * The next date a fee falls due: the billing day this month, or next
+ * month if it has already gone by.
+ *
+ * Built from `dueDateFor` and plain string comparison, NOT from
+ * `new Date(...).toISOString()`. That pattern looks harmless and is
+ * wrong everywhere east of Greenwich: `new Date(y, m, d)` is local
+ * midnight, and converting local midnight in IST to UTC lands at
+ * 18:30 the PREVIOUS day, so every date it produced was a day early.
+ * A student billed on the 1st was stored as due on the 31st of the
+ * month before.
+ */
+export function nextDueDate(feeDay: number, today = todayISO()): string {
+  const thisMonth = dueDateFor(today.slice(0, 7), feeDay)
+  // On the day itself the fee is due today, not in a month's time.
+  return thisMonth >= today ? thisMonth : dueDateFor(shiftMonth(today.slice(0, 7), 1), feeDay)
+}
+
 export function dueDateFor(monthKey: string, feeDay: number): string {
   const last = daysInMonth(monthKey)
   const day = Math.min(clampDay(feeDay), last)

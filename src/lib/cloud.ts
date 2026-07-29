@@ -19,6 +19,7 @@
    ============================================================ */
 
 import type { AttendanceStatus } from './types'
+import { nextDueDate } from './format'
 
 const PROJECT = 'https://ugsklcipzyiogxynshnh.supabase.co'
 // Public by design — it is in every tenant's front end. RLS is the
@@ -416,21 +417,6 @@ export function markStaffAttendance(a: {
    --------------------------------------------------------------- */
 
 /**
- * The next time the fee falls due: the chosen day, this month or next if
- * it has already passed.
- *
- * Calendar arithmetic, not money — this picks a date the owner named, it
- * does not work out what anybody owes. What happens on that date is
- * reminder_queue's business, and what it costs is resolve_fee's.
- */
-function nextRenewal(feeDueDay: number, from = new Date()): string {
-  const day = Math.min(Math.max(feeDueDay, 1), 28)
-  const renewal = new Date(from.getFullYear(), from.getMonth(), day)
-  if (renewal < from) renewal.setMonth(renewal.getMonth() + 1)
-  return renewal.toISOString().slice(0, 10)
-}
-
-/**
  * Add a student: a member row and the enrolment that carries the money.
  *
  * Two inserts rather than one because the platform models them
@@ -474,7 +460,7 @@ export async function addStudent(a: {
     plan_months: 1,
     custom_amount: a.customFee ?? null,
     joined_on: a.joinedOn,
-    renewal_on: nextRenewal(a.feeDueDay),
+    renewal_on: nextDueDate(a.feeDueDay),
     status: 'active',
   })) as Array<{ id: number }>
   const enrollmentId = enrolments?.[0]?.id
@@ -573,7 +559,7 @@ export async function reenroll(a: {
     p_batch: a.batchId,
     p_sport: 'badminton',
     p_joined_on: a.joinedOn ?? null,
-    p_renewal_on: nextRenewal(a.feeDueDay),
+    p_renewal_on: nextDueDate(a.feeDueDay),
     p_plan_months: 1,
     p_custom_amount: a.customFee ?? null,
   })
