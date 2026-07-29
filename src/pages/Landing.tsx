@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import '../styles/landing.css'
-import { useStore } from '../lib/store'
+import { lockedForMs, useStore } from '../lib/store'
 import { navigate } from '../lib/router'
 import { Sheet } from '../components/ui'
 import { IconLock, IconTrophy, IconWhatsApp } from '../components/icons'
@@ -152,12 +152,22 @@ function PasscodeSheet({
 }) {
   const [code, setCode] = useState('')
   const [err, setErr] = useState(false)
+  const [lockMs, setLockMs] = useState(0)
 
   useEffect(() => {
     if (!open) {
       setCode('')
       setErr(false)
     }
+  }, [open])
+
+  /* Tick the lockout down so the pad re-enables itself without a reload. */
+  useEffect(() => {
+    if (!open) return
+    const tick = () => setLockMs(lockedForMs())
+    tick()
+    const t = setInterval(tick, 500)
+    return () => clearInterval(t)
   }, [open])
 
   useEffect(() => {
@@ -176,8 +186,9 @@ function PasscodeSheet({
     return () => clearTimeout(t)
   }, [code, onSubmit])
 
+  const locked = lockMs > 0
   const press = (d: string) => {
-    if (err) return
+    if (err || locked) return
     setCode((c) => (c.length >= 4 ? c : c + d))
   }
 
@@ -198,21 +209,29 @@ function PasscodeSheet({
 
       <p
         className="t-mut"
-        style={{ textAlign: 'center', minHeight: 18, color: err ? '#ff8f8f' : undefined }}
+        style={{
+          textAlign: 'center',
+          minHeight: 18,
+          color: err || locked ? '#ff8f8f' : undefined,
+        }}
       >
-        {err ? 'Wrong passcode — try again' : 'Default is 1234. Change it in Settings.'}
+        {locked
+          ? `Too many wrong tries — wait ${Math.ceil(lockMs / 1000)}s`
+          : err
+            ? 'Wrong PIN — try again'
+            : 'Default is 1234. Change it in Settings.'}
       </p>
 
       <div className="keypad">
         {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
-          <button key={d} className="key" onClick={() => press(d)}>
+          <button key={d} className="key" onClick={() => press(d)} disabled={locked}>
             {d}
           </button>
         ))}
-        <button className="key key--muted" onClick={() => setCode('')}>
+        <button className="key key--muted" onClick={() => setCode('')} disabled={locked}>
           Clear
         </button>
-        <button className="key" onClick={() => press('0')}>
+        <button className="key" onClick={() => press('0')} disabled={locked}>
           0
         </button>
         <button className="key key--muted" onClick={() => setCode((c) => c.slice(0, -1))}>

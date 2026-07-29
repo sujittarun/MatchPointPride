@@ -15,6 +15,50 @@ import { allImages, putRaw } from './images'
 
 const KEY = 'mpp.data.v1'
 const AUTH_KEY = 'mpp.auth.v1'
+const ATTEMPTS_KEY = 'mpp.pin.attempts'
+
+/* ------------------------------------------------------------------
+   PIN attempt limiting.
+
+   Four digits is ten thousand guesses, which a person with the URL can
+   work through. Lockouts escalate and survive a reload, so closing the
+   tab is not a reset. This lives here rather than in the login screen
+   because it must hold wherever the PIN is checked from.
+
+   Note this slows a human down; it is not a substitute for a real
+   session. See README § Security.
+   ------------------------------------------------------------------ */
+
+const LOCKOUTS_MS = [0, 0, 0, 0, 30_000, 60_000, 300_000, 900_000]
+
+interface Attempts {
+  count: number
+  until: number
+}
+
+function readAttempts(): Attempts {
+  try {
+    const raw = localStorage.getItem(ATTEMPTS_KEY)
+    if (!raw) return { count: 0, until: 0 }
+    const a = JSON.parse(raw) as Attempts
+    return { count: Number(a.count) || 0, until: Number(a.until) || 0 }
+  } catch {
+    return { count: 0, until: 0 }
+  }
+}
+
+function writeAttempts(a: Attempts) {
+  try {
+    localStorage.setItem(ATTEMPTS_KEY, JSON.stringify(a))
+  } catch {
+    /* nothing we can do */
+  }
+}
+
+/** Milliseconds still locked out, 0 when the pad is usable. */
+export function lockedForMs(now = Date.now()): number {
+  return Math.max(0, readAttempts().until - now)
+}
 
 /* ------------------------------------------------------------------
    Persistence. One JSON document in localStorage.
@@ -276,16 +320,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     (code: string) => {
+      if (lockedForMs() > 0) return false
+
       const ok = code.trim() === (data.settings.passcode || '1234')
       if (ok) {
+        writeAttempts({ count: 0, until: 0 })
         setAuthed(true)
         try {
           sessionStorage.setItem(AUTH_KEY, '1')
         } catch {
           /* session storage unavailable — stay logged in for this render only */
         }
+        return true
       }
-      return ok
+
+      const count = readAttempts().count + 1
+      const wait = LOCKOUTS_MS[Math.min(count, LOCKOUTS_MS.length - 1)]
+      writeAttempts({ count, until: wait ? Date.now() + wait : 0 })
+      return false
     },
     [data.settings.passcode],
   )

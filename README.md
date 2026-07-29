@@ -116,9 +116,18 @@ Every read and write goes through `src/lib/store.tsx`, so moving to a hosted dat
 (Supabase, Firebase) is a change to that one file — the rest of the app doesn't know where
 its data comes from.
 
-**2. The passcode is not security.** The page is public; the 4-digit code only stops a
-casual passer-by on a shared phone. Anyone who knows the URL can reach whatever is stored in
-that browser. Real access control needs a backend, which this deliberately doesn't have.
+**2. The PIN is not access control — yet.** The page is public and the PIN is compared in
+JavaScript, so it only stops a casual passer-by on a shared phone. Wrong entries now lock
+the pad with an escalating delay that survives a reload, which slows a person down; it does
+not stop one.
+
+The PIN is worth keeping — for a single operator it is the right unlock gesture. But it has
+to sit **on top of** a real session, not instead of one: sign in once per device against
+Academy Manager's auth, then the PIN unlocks the stored session on every later visit, the
+way a banking app does. Row Level Security trusts the session token; the PIN never reaches
+the database. Until that lands, nothing sensitive should go in here.
+
+See `docs/data-model.sql` for what this front-end needs from the shared database.
 
 ---
 
