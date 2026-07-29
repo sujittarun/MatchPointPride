@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(supabase --version)",
+      "Bash(curl *)",
+      "WebFetch(domain:supabase.com)",
+      "Bash(supabase init *)",
+      "Bash(git check-ignore *)",
+      "Bash(supabase projects *)",
+      "Bash(supabase link *)",
+      "Bash(supabase db *)"
+    ]
+  }
+}

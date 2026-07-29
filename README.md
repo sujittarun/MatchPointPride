@@ -4,6 +4,13 @@ A phone-first operations console for **Match Point Pride Badminton Academy** —
 Road 30, beside Sam Houston Intl School, Narsingi, Hyderabad — built for one person to
 run the academy from their phone.
 
+> **Status: standalone, being migrated.** This is tenant `mpp` of Academy Manager, but it
+> does not talk to the platform database yet. It stores everything in `localStorage`, and
+> its fee, arrears and reminder-timing rules are in TypeScript — which the platform's house
+> rule forbids, because those rules already exist as SQL functions every other client
+> calls. See `CLAUDE.md` for the violation and the migration order. **Do not add new money
+> logic to this repo.**
+
 **Live:** https://sujittarun.github.io/MatchPointPride/
 
 A public landing page, then a passcode gate, then four things: batches, reminders,
@@ -52,6 +59,11 @@ tap.
 **There is no "generate" step.** The list is derived from the payment record: a student is
 behind for a month when no fee payment is recorded *for* that month, and the reminder
 appears on its own. **Nothing is ever sent automatically** — you send each one.
+
+> This derivation is currently done in TypeScript. It duplicates `reminder_queue()` and
+> `apply_payment_coverage()` in Postgres, which every other tenant uses and which encode a
+> reminder ladder this app does not follow (−2 heads-up, 0 due, +5 first chase, +7–14
+> daily, stop at +15). It is described below as it behaves *today*, not as it should be.
 
 **Arrears go out as one message.** A student two months behind gets a single reminder for
 both — *"…fee for June and July comes to ₹4,400"* — not two separate chases. Marking it
@@ -103,7 +115,10 @@ spreadsheet imports, long-string layout overflow, and the empty state of every s
 
 ---
 
-## Two things to know before relying on it
+## Three things to know before relying on it
+
+**0. The money rules are in the wrong place.** They belong in Postgres and will move there;
+until they do, this app can disagree with Academy Manager about what a student owes.
 
 **1. Data lives in your browser, on your phone.** GitHub Pages serves static files and has
 no server or database, so everything is stored in `localStorage`. Clearing browser data,
