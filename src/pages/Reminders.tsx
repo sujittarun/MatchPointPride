@@ -4,16 +4,17 @@ import type { Reminder, ReminderChannel, ReminderStatus } from '../lib/types'
 import {
   currentMonthKey,
   dateLabelFull,
-  dueDateFor,
   dueLabel,
   inr,
   initials,
+  monthLabel,
   monthShort,
   todayISO,
   uid,
 } from '../lib/format'
 import {
   batchById,
+  monthsPhrase,
   reminderActivity,
   reminderStats,
   renderReminderMessage,
@@ -30,7 +31,6 @@ import {
   IconClock,
   IconPhone,
   IconPlus,
-  IconSpark,
   IconTrash,
   IconWhatsApp,
   IconX,
@@ -53,11 +53,10 @@ const STATUS_LABEL: Record<ReminderStatus, string> = {
 }
 
 export default function Reminders() {
-  const { data, update, toast } = useStore()
+  const { data } = useStore()
   const [filter, setFilter] = useState<Filter>('due')
   const [open, setOpen] = useState<Reminder | null>(null)
   const [creating, setCreating] = useState(false)
-  const [confirmGen, setConfirmGen] = useState(false)
 
   const stats = useMemo(() => reminderStats(data), [data])
   const activity = useMemo(() => reminderActivity(data, 6), [data])
@@ -80,46 +79,6 @@ export default function Reminders() {
         return all
     }
   }, [data.reminders, filter, today])
-
-  /* Create a fee reminder for every active student who hasn't paid
-     this month and doesn't already have one open. */
-  const generate = () => {
-    const month = currentMonthKey()
-    let made = 0
-    update((d) => {
-      const paid = new Set(
-        d.transactions
-          .filter((t) => t.source === 'student_fee' && t.date.startsWith(month) && t.studentId)
-          .map((t) => t.studentId!),
-      )
-      const openFor = new Set(
-        d.reminders
-          .filter((r) => r.kind === 'fee' && (r.status === 'pending' || r.status === 'sent'))
-          .map((r) => r.studentId),
-      )
-      for (const s of d.students) {
-        if (!s.active || paid.has(s.id) || openFor.has(s.id)) continue
-        const batch = d.batches.find((b) => b.id === s.batchId)
-        const now = new Date().toISOString()
-        d.reminders.push({
-          id: uid('rem'),
-          studentId: s.id,
-          kind: 'fee',
-          title: `Monthly fee — ${batch?.name ?? 'Batch'}`,
-          message: '',
-          dueDate: dueDateFor(month, s.feeDueDay),
-          amount: s.monthlyFee,
-          status: 'pending',
-          createdAt: now,
-          sendCount: 0,
-          history: [{ at: now, action: 'created' }],
-        })
-        made++
-      }
-    })
-    setConfirmGen(false)
-    toast(made > 0 ? `${made} reminder${made === 1 ? '' : 's'} created.` : 'Everyone is up to date.')
-  }
 
   return (
     <main className="page">
@@ -181,14 +140,18 @@ export default function Reminders() {
         )}
       </div>
 
-      <div className="row gap-8" style={{ marginBottom: 14 }}>
-        <button className="btn btn--primary grow" onClick={() => setConfirmGen(true)}>
-          <IconSpark size={16} /> Generate this month
-        </button>
-        <button className="btn" onClick={() => setCreating(true)} aria-label="New reminder">
-          <IconPlus size={17} />
-        </button>
-      </div>
+      <p className="t-mut" style={{ marginBottom: 12, lineHeight: 1.5 }}>
+        This list keeps itself up to date from the payment record. Nothing is sent
+        automatically — you send each one.
+      </p>
+
+      <button
+        className="btn btn--block"
+        style={{ marginBottom: 14 }}
+        onClick={() => setCreating(true)}
+      >
+        <IconPlus size={17} /> One-off reminder
+      </button>
 
       <div className="chiprow" style={{ marginBottom: 14 }}>
         {(
@@ -216,7 +179,7 @@ export default function Reminders() {
           title={filter === 'due' ? 'Nothing due' : 'Nothing here'}
           text={
             filter === 'due'
-              ? 'No reminders are due right now. Generate this month’s fee reminders when you’re ready.'
+              ? 'Nobody owes anything right now. Unpaid fees appear here on their own.'
               : 'Try another filter.'
           }
         />
@@ -230,15 +193,6 @@ export default function Reminders() {
 
       <ReminderDetail reminder={open} onClose={() => setOpen(null)} />
       <NewReminderSheet open={creating} onClose={() => setCreating(false)} />
-
-      <Confirm
-        open={confirmGen}
-        title="Generate fee reminders?"
-        body="Creates one reminder for every active student who hasn't paid this month and doesn't already have an open reminder. Nothing is sent yet — you send each one yourself."
-        confirmLabel="Generate"
-        onCancel={() => setConfirmGen(false)}
-        onConfirm={generate}
-      />
     </main>
   )
 }
@@ -269,7 +223,9 @@ function ReminderRow({ reminder, onOpen }: { reminder: Reminder; onOpen: () => v
       <div className="listrow__main">
         <div className="listrow__title">{student?.name ?? 'Unknown student'}</div>
         <div className="listrow__meta">
-          {batch?.name ?? '—'} · {overdue ? dueLabel(reminder.dueDate) : dateLabelFull(reminder.dueDate)}
+          {(reminder.months?.length ?? 0) > 1
+            ? `${reminder.months!.length} months · ${monthsPhrase(reminder.months)}`
+            : `${batch?.name ?? '—'} · ${overdue ? dueLabel(reminder.dueDate) : dateLabelFull(reminder.dueDate)}`}
         </div>
       </div>
       <div className="listrow__end">
@@ -333,29 +289,44 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
     logSend(channel)
   }
 
+  /* Settles every month the reminder covers. One payment row per month —
+     all dated today, because that is when the cash arrived, but each
+     tagged with the month it clears so the arrears actually go away. */
   const markPaid = () => {
+    const months = live.months?.length ? live.months : [currentMonthKey()]
+    const perMonth = student?.monthlyFee ?? Math.round((live.amount ?? 0) / months.length)
     update((d) => {
       const r = d.reminders.find((x) => x.id === live.id)
-      if (!r) return
-      r.status = 'paid'
-      r.history.push({ at: new Date().toISOString(), action: 'paid' })
-      // Wire straight into Finance so the money shows up once, here.
-      if (r.amount && r.amount > 0) {
+      if (r) {
+        r.status = 'paid'
+        r.months = []
+        r.history.push({
+          at: new Date().toISOString(),
+          action: 'paid',
+          note: months.length > 1 ? `Cleared ${months.length} months` : undefined,
+        })
+      }
+      for (const m of months) {
         d.transactions.unshift({
           id: uid('txn'),
           type: 'revenue',
           date: todayISO(),
-          amount: r.amount,
+          forMonth: m,
+          amount: perMonth,
           category: 'Student Fee',
           source: 'student_fee',
-          studentId: r.studentId,
+          studentId: live.studentId,
           batchId: student?.batchId,
-          note: `${batch?.name ?? ''} — via reminder`.trim(),
+          note: `${batch?.name ?? ''} — ${monthLabel(m)}`.trim(),
           createdAt: new Date().toISOString(),
         })
       }
     })
-    toast('Marked paid and added to Finance.')
+    toast(
+      months.length > 1
+        ? `${months.length} months cleared and added to Finance.`
+        : 'Marked paid and added to Finance.',
+    )
     onClose()
   }
 
@@ -407,10 +378,10 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
       >
         <div className="grid grid-2" style={{ marginBottom: 16 }}>
           <Stat
-            label="Amount"
+            label={live.months && live.months.length > 1 ? `${live.months.length} months owed` : 'Amount'}
             value={live.amount ? inr(live.amount) : '—'}
-            foot={live.title}
-            accent="var(--money-in)"
+            foot={live.months?.length ? monthsPhrase(live.months) : live.title}
+            accent={live.months && live.months.length > 1 ? 'var(--critical)' : 'var(--money-in)'}
           />
           <Stat
             label="Times sent"

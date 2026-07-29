@@ -20,11 +20,13 @@ import {
   uid,
 } from '../lib/format'
 import {
+  ARREARS_MONTHS,
   collectionRate,
   expenseByCategory,
   moneyByMonth,
   monthTotals,
   revenueBySource,
+  unpaidMonthsFor,
 } from '../lib/selectors'
 import { Confirm, Empty, Field, Sheet, Stat } from '../components/ui'
 import { BarChart, Donut, HBarChart, TrendChart, seriesColor } from '../components/charts'
@@ -371,6 +373,7 @@ function TxnSheet({
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(todayISO())
   const [note, setNote] = useState('')
+  const [forMonth, setForMonth] = useState(currentMonthKey())
   const [key, setKey] = useState<string | null>(null)
 
   const openKey = type === null ? null : `${type}:${month}`
@@ -380,6 +383,7 @@ function TxnSheet({
       setTab(type)
       setAmount('')
       setNote('')
+      setForMonth(currentMonthKey())
       // Default the date into the month being viewed.
       const today = todayISO()
       setDate(today.startsWith(month) ? today : `${month}-01`)
@@ -387,6 +391,11 @@ function TxnSheet({
   }
 
   const activeStudents = data.students.filter((s) => s.active)
+  const chosenStudent = activeStudents.find((s) => s.id === studentId)
+  const owedMonths = chosenStudent ? unpaidMonthsFor(data, chosenStudent) : []
+  /* Offer every month in the arrears window so a mistake can be corrected,
+     but mark which are actually outstanding. */
+  const monthChoices = lastMonths(ARREARS_MONTHS)
 
   const save = () => {
     const amt = Number(amount)
@@ -415,29 +424,13 @@ function TxnSheet({
                   ? 'Membership'
                   : 'Other Income',
           source,
+          forMonth: source === 'student_fee' ? forMonth : undefined,
           bookingMode: source === 'court_booking' ? bookingMode : undefined,
           studentId: student?.id,
           batchId: student?.batchId,
           note: note.trim() || undefined,
           createdAt: new Date().toISOString(),
         })
-        // A recorded fee closes that student's open fee reminder.
-        if (student) {
-          for (const r of d.reminders) {
-            if (
-              r.studentId === student.id &&
-              r.kind === 'fee' &&
-              (r.status === 'pending' || r.status === 'sent')
-            ) {
-              r.status = 'paid'
-              r.history.push({
-                at: new Date().toISOString(),
-                action: 'paid',
-                note: 'Payment recorded in Finance',
-              })
-            }
-          }
-        }
       } else {
         d.transactions.unshift({
           id: uid('txn'),
@@ -530,24 +523,55 @@ function TxnSheet({
             )}
 
             {source === 'student_fee' && (
-              <Field label="Student" hint="Closes their open fee reminder." span>
-                <select
-                  className="select"
-                  value={studentId}
-                  onChange={(e) => {
-                    setStudentId(e.target.value)
-                    const s = activeStudents.find((x) => x.id === e.target.value)
-                    if (s && !amount) setAmount(String(s.monthlyFee))
-                  }}
-                >
-                  <option value="">— not linked to a student —</option>
-                  {activeStudents.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              <>
+                <Field label="Student" hint="Clears that month from their dues." span>
+                  <select
+                    className="select"
+                    value={studentId}
+                    onChange={(e) => {
+                      const id = e.target.value
+                      setStudentId(id)
+                      const s = activeStudents.find((x) => x.id === id)
+                      if (s && !amount) setAmount(String(s.monthlyFee))
+                      // Default to the oldest month they still owe.
+                      const owed = s ? unpaidMonthsFor(data, s) : []
+                      setForMonth(owed[0] ?? currentMonthKey())
+                    }}
+                  >
+                    <option value="">— not linked to a student —</option>
+                    {activeStudents.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                {chosenStudent && (
+                  <Field
+                    label="Fee for"
+                    hint={
+                      owedMonths.length > 1
+                        ? `${chosenStudent.name} owes ${owedMonths.length} months.`
+                        : undefined
+                    }
+                    span
+                  >
+                    <select
+                      className="select"
+                      value={forMonth}
+                      onChange={(e) => setForMonth(e.target.value)}
+                    >
+                      {monthChoices.map((m) => (
+                        <option key={m} value={m}>
+                          {monthLabel(m)}
+                          {owedMonths.includes(m) ? ' — unpaid' : ' — already paid'}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
+              </>
             )}
           </>
         ) : (

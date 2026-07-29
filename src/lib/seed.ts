@@ -10,7 +10,6 @@ import type {
 } from './types'
 import {
   addDays,
-  currentMonthKey,
   dueDateFor,
   isSunday,
   lastMonths,
@@ -168,16 +167,25 @@ function makeTransactions(
   const today = todayISO()
   const now = new Date().toISOString()
 
-  for (const m of months) {
-    // --- student fees: most students pay each month ---
+  /* Most students are up to date; a handful are genuinely behind by one
+     or two months, so the arrears handling has something real to show. */
+  const behind = new Map<string, number>()
+  for (const s of students) {
+    const r = rand()
+    behind.set(s.id, r > 0.94 ? 2 : r > 0.86 ? 1 : 0)
+  }
+
+  for (const [mi, m] of months.entries()) {
+    // --- student fees ---
     for (const s of students) {
       if (!s.active) continue
-      if (rand() > 0.88) continue // a few didn't pay that month
+      // the last `owed` months are the ones they haven't settled
+      if (mi >= months.length - (behind.get(s.id) ?? 0)) continue
       const date = dueDateFor(m, s.feeDueDay + Math.floor(rand() * 6))
       if (date > today) continue
       const batch = batches.find((b) => b.id === s.batchId)
       out.push({
-        id: uid('txn'), type: 'revenue', date, amount: s.monthlyFee,
+        id: uid('txn'), type: 'revenue', date, forMonth: m, amount: s.monthlyFee,
         category: 'Student Fee', source: 'student_fee',
         studentId: s.id, batchId: s.batchId,
         note: batch ? batch.name : undefined, createdAt: now,
@@ -242,12 +250,9 @@ function makeTransactions(
 function makeReminders(
   students: Student[],
   batches: Batch[],
-  transactions: Transaction[],
   rand: () => number,
 ): Reminder[] {
   const out: Reminder[] = []
-  const thisMonth = currentMonthKey()
-  const now = new Date().toISOString()
 
   /* --- history: past months where a reminder was sent and then paid,
      so the tracking chart has something real to show. --- */
@@ -288,6 +293,7 @@ function makeReminders(
         message: '',
         dueDate: due,
         amount: s.monthlyFee,
+        months: [m],
         status: lapsed ? 'cancelled' : 'paid',
         createdAt: `${m}-${dueDay}T09:00:00.000Z`,
         lastSentAt: sentAt,
@@ -297,31 +303,8 @@ function makeReminders(
     }
   }
 
-  const paidThisMonth = new Set(
-    transactions
-      .filter((t) => t.source === 'student_fee' && t.date.startsWith(thisMonth))
-      .map((t) => t.studentId),
-  )
-
-  for (const s of students) {
-    if (!s.active) continue
-    if (paidThisMonth.has(s.id)) continue
-    const batch = batches.find((b) => b.id === s.batchId)
-    const due = dueDateFor(thisMonth, s.feeDueDay)
-    out.push({
-      id: uid('rem'),
-      studentId: s.id,
-      kind: 'fee',
-      title: `Monthly fee — ${batch?.name ?? 'Batch'}`,
-      message: '',
-      dueDate: due,
-      amount: s.monthlyFee,
-      status: 'pending',
-      createdAt: now,
-      sendCount: 0,
-      history: [{ at: now, action: 'created' }],
-    })
-  }
+  /* Open reminders are not seeded — the app derives them from unpaid
+     months as soon as it loads. */
 
   return out
 }
@@ -333,7 +316,7 @@ export function buildSeedData(): AppData {
   const staff = makeStaff()
   const attendance = makeAttendance(staff, rand)
   const transactions = makeTransactions(students, batches, staff, rand)
-  const reminders = makeReminders(students, batches, transactions, rand)
+  const reminders = makeReminders(students, batches, rand)
 
   return {
     version: 1,

@@ -53,8 +53,15 @@ export interface Reminder {
   kind: ReminderKind
   title: string
   message: string
+  /** Oldest unpaid month's due date, so the longest overdue sorts first. */
   dueDate: string
   amount?: number
+  /**
+   * Unpaid months this fee reminder covers (YYYY-MM, oldest first). A
+   * student behind by two months gets ONE reminder naming both, not two
+   * separate chases.
+   */
+  months?: string[]
   status: ReminderStatus
   createdAt: string
   lastSentAt?: string
@@ -103,8 +110,15 @@ export const EXPENSE_CATEGORIES = [
 export interface Transaction {
   id: string
   type: TxnType
-  /** YYYY-MM-DD */
+  /** YYYY-MM-DD — when the money actually moved. */
   date: string
+  /**
+   * For a student fee, the month the payment is *for* (YYYY-MM), which is
+   * not always the month it arrived in — someone can clear June's fee in
+   * July. Cash-flow reporting uses `date`; "has June been paid?" uses this.
+   * Older records without it fall back to the month of `date`.
+   */
+  forMonth?: string
   amount: number
   /** Expense category, or a revenue label. */
   category: string

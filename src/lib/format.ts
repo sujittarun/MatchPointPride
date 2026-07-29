@@ -68,6 +68,17 @@ export function monthLabel(key: string): string {
   return `${MONTHS[(m ?? 1) - 1]} ${y}`
 }
 
+const MONTHS_FULL = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+/** "2026-06" → "June". Used in messages to parents, where "Jun" reads cheap. */
+export function monthNameFull(key: string): string {
+  const [, m] = key.split('-').map(Number)
+  return MONTHS_FULL[(m ?? 1) - 1]
+}
+
 export function monthShort(key: string): string {
   const [, m] = key.split('-').map(Number)
   return MONTHS[(m ?? 1) - 1]

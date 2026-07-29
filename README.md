@@ -49,8 +49,16 @@ Students belong to a batch and carry a phone number, monthly fee and fee-due day
 tap.
 
 ### 2. Reminders and reminder tracking
-**Generate this month** creates a fee reminder for every active student who hasn't paid
-and doesn't already have one open — nothing is sent automatically.
+**There is no "generate" step.** The list is derived from the payment record: a student is
+behind for a month when no fee payment is recorded *for* that month, and the reminder
+appears on its own. **Nothing is ever sent automatically** — you send each one.
+
+**Arrears go out as one message.** A student two months behind gets a single reminder for
+both — *"…fee for June and July comes to ₹4,400"* — not two separate chases. Marking it
+paid writes one payment row per month cleared.
+
+Payments carry a `forMonth` separate from their `date`, so someone clearing June's fee in
+July settles June while the cash still lands in July's revenue.
 
 Each reminder sends over **WhatsApp** (`wa.me` deep link with the message pre-filled),
 SMS or a phone call. Every send is logged: channel, timestamp, and a running send count,
@@ -86,9 +94,9 @@ reminders too, so someone who has stopped coming doesn't sit in the overdue list
 ## Testing
 
 `npm run build` typechecks the whole app. Beyond that the project has been through an
-end-to-end regression covering the logic layer (164 assertions over date arithmetic,
+end-to-end regression covering the logic layer (214 assertions over date arithmetic,
 money formatting, collection rate, attendance maths, reminder stats, the storage
-migration path and CSV round-tripping) and a UI pass on a 375×812 viewport: negative and
+migration path, arrears/dues derivation and CSV round-tripping) and a UI pass on a 375×812 viewport: negative and
 malformed input on every form, referential integrity across deletes, the
 member-discontinue flow, corrupt and unreadable saved data, malformed backup and
 spreadsheet imports, long-string layout overflow, and the empty state of every screen.

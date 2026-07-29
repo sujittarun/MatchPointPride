@@ -3,7 +3,7 @@ import { useStore } from '../lib/store'
 import { navigate } from '../lib/router'
 import type { Student } from '../lib/types'
 import { currentMonthKey, inr, initials, ordinal, todayISO, uid } from '../lib/format'
-import { studentsOf } from '../lib/selectors'
+import { paidForMonth, studentsOf, unpaidMonthsFor } from '../lib/selectors'
 import { ACADEMY } from '../lib/academy'
 import { Confirm, Empty, Stat } from '../components/ui'
 import { seriesColor } from '../components/charts'
@@ -35,7 +35,7 @@ export default function BatchDetail({ id }: { id: string }) {
   const paidThisMonth = useMemo(() => {
     const set = new Set<string>()
     for (const t of data.transactions) {
-      if (t.source === 'student_fee' && t.date.startsWith(thisMonth) && t.studentId) {
+      if (t.source === 'student_fee' && t.studentId && paidForMonth(t) === thisMonth) {
         set.add(t.studentId)
       }
     }
@@ -65,12 +65,16 @@ export default function BatchDetail({ id }: { id: string }) {
     .reduce((a, s) => a + s.monthlyFee, 0)
   const color = seriesColor(batch.colorSlot)
 
+  /* Settles this month only — the roster is a this-month view. Anything
+     still owed from earlier months stays visible under Reminders, and the
+     reminder list re-syncs itself from this payment. */
   const recordPayment = (s: Student) => {
     update((d) => {
       d.transactions.unshift({
         id: uid('txn'),
         type: 'revenue',
         date: todayISO(),
+        forMonth: thisMonth,
         amount: s.monthlyFee,
         category: 'Student Fee',
         source: 'student_fee',
@@ -79,15 +83,13 @@ export default function BatchDetail({ id }: { id: string }) {
         note: batch.name,
         createdAt: new Date().toISOString(),
       })
-      // Close any open fee reminder for this student.
-      for (const r of d.reminders) {
-        if (r.studentId === s.id && r.kind === 'fee' && (r.status === 'pending' || r.status === 'sent')) {
-          r.status = 'paid'
-          r.history.push({ at: new Date().toISOString(), action: 'paid', note: 'Marked from batch roster' })
-        }
-      }
     })
-    toast(`${s.name}'s fee recorded.`)
+    const stillOwed = unpaidMonthsFor(data, s).filter((m) => m !== thisMonth).length
+    toast(
+      stillOwed > 0
+        ? `${s.name}'s fee recorded. Still ${stillOwed} earlier month${stillOwed === 1 ? '' : 's'} owing.`
+        : `${s.name}'s fee recorded.`,
+    )
   }
 
   return (

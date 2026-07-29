@@ -10,6 +10,7 @@ import {
 } from 'react'
 import type { AppData, Settings } from './types'
 import { buildEmptyData, buildSeedData, DEFAULT_SETTINGS } from './seed'
+import { applyFeePlan, isFeePlanEmpty, planFeeReminders } from './selectors'
 
 const KEY = 'mpp.data.v1'
 const AUTH_KEY = 'mpp.auth.v1'
@@ -43,6 +44,17 @@ export function normalise(parsed: AppData): AppData {
     if (st === 'half') rec.status = 'present'
     else if (st === 'leave') rec.status = 'absent'
   }
+
+  /* A student may only ever have one open fee reminder. An earlier build
+     could create duplicates when the sync ran twice; fold any away here so
+     outstanding totals aren't double-counted. */
+  const seenOpenFee = new Set<string>()
+  parsed.reminders = parsed.reminders.filter((r) => {
+    if (r.kind !== 'fee' || (r.status !== 'pending' && r.status !== 'sent')) return true
+    if (seenOpenFee.has(r.studentId)) return false
+    seenOpenFee.add(r.studentId)
+    return true
+  })
 
   // Keep the fee day a real day of the month. Short months are handled
   // when the due date is built, not by rejecting the 29th–31st.
@@ -196,6 +208,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return draft
     })
   }, [])
+
+  /* Fee reminders are kept in step with the payment record automatically —
+     there is no "generate" step to remember. This runs whenever the things
+     it depends on change, and writes only when the plan is non-empty, so it
+     settles after one pass instead of looping. */
+  useEffect(() => {
+    const plan = planFeeReminders(data)
+    if (!isFeePlanEmpty(plan)) update((d) => applyFeePlan(d, plan))
+  }, [data, update])
 
   const setSettings = useCallback(
     (patch: Partial<Settings>) => {

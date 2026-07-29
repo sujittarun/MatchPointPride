@@ -8,7 +8,16 @@ import type {
   Student,
   Transaction,
 } from './types'
-import { currentMonthKey, isSunday, lastMonths, monthDates, todayISO } from './format'
+import {
+  currentMonthKey,
+  dueDateFor,
+  isSunday,
+  lastMonths,
+  monthDates,
+  monthNameFull,
+  todayISO,
+  uid,
+} from './format'
 import { ACADEMY } from './academy'
 
 /* ------------------------------------------------------------------
@@ -107,7 +116,7 @@ export function collectionRate(data: AppData, monthKey: string) {
   if (active.length === 0) return { paid: 0, total: 0, rate: 0, collected: 0, expected: 0 }
   const paid = new Set(
     data.transactions
-      .filter((t) => t.source === 'student_fee' && t.date.startsWith(monthKey) && t.studentId)
+      .filter((t) => t.source === 'student_fee' && t.studentId && paidForMonth(t) === monthKey)
       .map((t) => t.studentId!),
   )
   const paidActive = active.filter((s) => paid.has(s.id))
@@ -213,6 +222,141 @@ export function unmarkedToday(data: AppData, date = todayISO()): number {
    Reminders
    ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------
+   Dues — derived, never "generated"
+
+   Who owes what falls straight out of the payment record, so there is
+   nothing for the owner to remember to press. A student is behind for a
+   month when no student-fee payment is recorded *for* that month.
+   ------------------------------------------------------------------ */
+
+/** How far back unpaid months are chased. */
+export const ARREARS_MONTHS = 6
+
+/** The month a student-fee payment settles (older records lack forMonth). */
+export function paidForMonth(t: Transaction): string {
+  return t.forMonth ?? t.date.slice(0, 7)
+}
+
+/** Unpaid months for one student, oldest first. */
+export function unpaidMonthsFor(
+  data: AppData,
+  student: Student,
+  upto = currentMonthKey(),
+): string[] {
+  if (!student.active) return []
+  const joinedMonth = student.joinedOn.slice(0, 7)
+  const paid = new Set(
+    data.transactions
+      .filter((t) => t.source === 'student_fee' && t.studentId === student.id)
+      .map(paidForMonth),
+  )
+  return lastMonths(ARREARS_MONTHS, upto).filter(
+    (m) => m >= joinedMonth && !paid.has(m),
+  )
+}
+
+export interface FeePlan {
+  create: Reminder[]
+  update: Array<{ id: string; months: string[]; amount: number; dueDate: string }>
+  close: string[]
+}
+
+export function isFeePlanEmpty(p: FeePlan): boolean {
+  return p.create.length === 0 && p.update.length === 0 && p.close.length === 0
+}
+
+/**
+ * Work out what the fee reminders *should* be. Pure — apply it with
+ * `applyFeePlan`. Returning a plan lets the caller skip writing to storage
+ * when nothing has changed, which is the common case on every render.
+ */
+export function planFeeReminders(data: AppData, upto = currentMonthKey()): FeePlan {
+  const plan: FeePlan = { create: [], update: [], close: [] }
+  const now = new Date().toISOString()
+
+  for (const student of data.students) {
+    const open = data.reminders.find(
+      (r) =>
+        r.studentId === student.id &&
+        r.kind === 'fee' &&
+        (r.status === 'pending' || r.status === 'sent'),
+    )
+    const months = unpaidMonthsFor(data, student, upto)
+
+    if (months.length === 0) {
+      if (open) plan.close.push(open.id)
+      continue
+    }
+
+    const amount = months.length * student.monthlyFee
+    const dueDate = dueDateFor(months[0], student.feeDueDay)
+
+    if (!open) {
+      const batch = batchById(data, student.batchId)
+      plan.create.push({
+        id: uid('rem'),
+        studentId: student.id,
+        kind: 'fee',
+        title: `Fee — ${batch?.name ?? 'Batch'}`,
+        message: '',
+        dueDate,
+        amount,
+        months,
+        status: 'pending',
+        createdAt: now,
+        sendCount: 0,
+        history: [{ at: now, action: 'created' }],
+      })
+    } else if (
+      (open.months ?? []).join() !== months.join() ||
+      open.amount !== amount ||
+      open.dueDate !== dueDate
+    ) {
+      plan.update.push({ id: open.id, months, amount, dueDate })
+    }
+  }
+  return plan
+}
+
+export function applyFeePlan(draft: AppData, plan: FeePlan) {
+  const now = new Date().toISOString()
+  for (const r of plan.create) {
+    /* Idempotent by design: the same plan can be applied more than once
+       (React re-runs effects, two updates can race), and a student must
+       never end up with two open fee reminders. */
+    const already = draft.reminders.some(
+      (x) =>
+        x.studentId === r.studentId &&
+        x.kind === 'fee' &&
+        (x.status === 'pending' || x.status === 'sent'),
+    )
+    if (!already) draft.reminders.push(r)
+  }
+  for (const u of plan.update) {
+    const r = draft.reminders.find((x) => x.id === u.id)
+    if (!r) continue
+    const grew = (r.months?.length ?? 0) < u.months.length
+    r.months = u.months
+    r.amount = u.amount
+    r.dueDate = u.dueDate
+    if (grew) {
+      r.history.push({
+        at: now,
+        action: 'reopened',
+        note: `Another month fell due — now covers ${u.months.length} months`,
+      })
+    }
+  }
+  for (const id of plan.close) {
+    const r = draft.reminders.find((x) => x.id === id)
+    if (!r) continue
+    r.status = 'paid'
+    r.months = []
+    r.history.push({ at: now, action: 'paid', note: 'Fees cleared' })
+  }
+}
+
 export function openReminders(data: AppData): Reminder[] {
   return data.reminders.filter((r) => r.status === 'pending' || r.status === 'sent')
 }
@@ -299,6 +443,14 @@ export function dashboard(data: AppData) {
    Reminder message rendering
    ------------------------------------------------------------------ */
 
+/** ["2026-06","2026-07"] → "June and July". Two months read as one ask. */
+export function monthsPhrase(months: string[] | undefined): string {
+  const names = (months ?? []).map(monthNameFull)
+  if (names.length === 0) return 'this month'
+  if (names.length === 1) return names[0]
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
 export function renderReminderMessage(
   data: AppData,
   reminder: Reminder,
@@ -309,6 +461,7 @@ export function renderReminderMessage(
   const [y, m, d] = due.split('-')
   const template = reminder.message?.trim() ? reminder.message : ACADEMY.reminderTemplate
   return template
+    .replace(/\{months\}/g, monthsPhrase(reminder.months))
     .replace(/\{guardian\}/g, student?.guardian || student?.name || 'there')
     .replace(/\{student\}/g, student?.name ?? 'your ward')
     .replace(/\{academy\}/g, ACADEMY.name)

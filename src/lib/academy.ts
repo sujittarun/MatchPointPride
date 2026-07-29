@@ -36,9 +36,9 @@ export const ACADEMY = {
   enquiryPhone: '' as string,
   countryCode: '91' as string,
 
-  /** Placeholders: {student} {guardian} {amount} {due} {batch} {slot} {academy} {owner} */
+  /** Placeholders: {student} {guardian} {amount} {months} {due} {batch} {slot} {academy} {owner} */
   reminderTemplate:
-    'Hi {guardian}, this is a gentle reminder from {academy}. ' +
-    "{student}'s fee of {amount} for {batch} is due on {due}. " +
+    'Hi {guardian}, a gentle reminder from {academy}. ' +
+    "{student}'s {batch} fee for {months} comes to {amount}. " +
     'Please ignore if already paid. — {owner}',
 } as const
