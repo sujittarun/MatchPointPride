@@ -8,7 +8,6 @@ import {
   nonNegative,
   ordinal,
   todayISO,
-  uid,
 } from '../lib/format'
 import { Field, Sheet } from './ui'
 
@@ -26,7 +25,8 @@ export function StudentSheet({
   defaultFee?: number
   onClose: () => void
 }) {
-  const { data, update, toast } = useStore()
+  const { data, saveStudent, toast } = useStore()
+  const [saving, setSaving] = useState(false)
   const isNew = value === 'new'
   const s = isNew ? null : value
 
@@ -68,7 +68,7 @@ export function StudentSheet({
     if (isNew) setFee(String(feeOf(id) ?? ''))
   }
 
-  const save = () => {
+  const save = async () => {
     const trimmed = name.trim()
     if (!trimmed) {
       toast('Enter the student name.', 'bad')
@@ -88,68 +88,34 @@ export function StudentSheet({
     }
     const feeVal = nonNegative(fee)
     const day = clampDay(dueDay)
-    let cancelled = 0
-    update((d) => {
-      // A student who has stopped coming shouldn't keep generating an
-      // overdue badge, so close out anything still open for them.
-      if (!active && s) {
-        for (const r of d.reminders) {
-          if (r.studentId === s.id && (r.status === 'pending' || r.status === 'sent')) {
-            r.status = 'cancelled'
-            r.history.push({
-              at: new Date().toISOString(),
-              action: 'cancelled',
-              note: 'Student marked inactive',
-            })
-            cancelled++
-          }
-        }
-      }
-      if (isNew) {
-        d.students.push({
-          id: uid('stu'),
-          name: trimmed,
-          batchId: batch,
-          phone: phone.replace(/\s/g, ''),
-          guardian: guardian.trim() || undefined,
-          joinedOn,
-          spells: [{ from: joinedOn }],
-          monthlyFee: feeVal,
-          feeDueDay: day,
-          active,
-        })
-      } else if (s) {
-        const t = d.students.find((x) => x.id === s.id)
-        if (t) {
-          /* Leaving closes the current period; coming back opens a new one,
-             so a break never counts towards time at the academy — and never
-             counts as months owed either. */
-          t.spells = t.spells?.length ? t.spells : [{ from: t.joinedOn }]
-          if (t.active && !active) {
-            const last = t.spells[t.spells.length - 1]
-            if (last && !last.to) last.to = todayISO()
-          } else if (!t.active && active) {
-            t.spells.push({ from: todayISO() })
-          }
 
-          t.name = trimmed
-          t.batchId = batch
-          t.phone = phone.replace(/\s/g, '')
-          t.guardian = guardian.trim() || undefined
-          t.joinedOn = joinedOn
-          t.monthlyFee = feeVal
-          t.feeDueDay = day
-          t.active = active
-        }
-      }
+    /* Straight to Postgres. The reminder that used to be cancelled here
+       by hand is closed by the database: a discontinued enrolment drops
+       out of reminder_queue on its own, so there is nothing to tidy and
+       nothing that can disagree. */
+    setSaving(true)
+    const r = await saveStudent({
+      id: s?.id,
+      memberId: s?.memberId,
+      enrollmentId: s?.enrollmentId,
+      name: trimmed,
+      phone: phone.replace(/\s/g, ''),
+      guardian: guardian.trim() || undefined,
+      batchId: batch,
+      joinedOn,
+      feeDueDay: day,
+      // Only send a fee when it differs from what the batch resolves to;
+      // otherwise the batch rule keeps owning it.
+      customFee: feeVal === (feeOf(batch) ?? -1) ? null : feeVal,
+      active,
     })
-    toast(
-      isNew
-        ? 'Student added.'
-        : cancelled > 0
-          ? `Student marked inactive. ${cancelled} open reminder${cancelled === 1 ? '' : 's'} closed.`
-          : 'Student updated.',
-    )
+    setSaving(false)
+
+    if (!r.ok) {
+      toast(r.message, 'bad')
+      return
+    }
+    toast(isNew ? 'Student added.' : 'Student updated.')
     onClose()
   }
 
@@ -164,8 +130,8 @@ export function StudentSheet({
           <button className="btn" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn btn--primary" onClick={save}>
-            {isNew ? 'Add student' : 'Save'}
+          <button className="btn btn--primary" onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : isNew ? 'Add student' : 'Save'}
           </button>
         </>
       }

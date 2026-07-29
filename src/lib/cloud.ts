@@ -380,6 +380,135 @@ export function markStaffAttendance(a: {
 }
 
 /* ---------------------------------------------------------------
+   Writes
+
+   Each one lands in Postgres and nowhere else. The store re-reads
+   afterwards rather than patching its copy, because a write often
+   changes more than it says: recording a fee moves a renewal date and
+   closes a reminder, and guessing at that here would be the same
+   second-implementation mistake in a new place.
+   --------------------------------------------------------------- */
+
+/**
+ * Add a student: a member row and the enrolment that carries the money.
+ *
+ * Two inserts rather than one because the platform models them
+ * separately — a person, and their current arrangement with the
+ * academy. Someone who leaves and comes back gets a second enrolment
+ * and keeps one member row, which is what makes their history readable.
+ */
+export async function addStudent(a: {
+  name: string
+  phone: string
+  guardian?: string
+  centreId: number
+  batchId: number
+  joinedOn: string
+  feeDueDay: number
+  /** Only when the owner overrode the batch fee for this student. */
+  customFee?: number | null
+  note?: string
+}): Promise<{ memberId: number; enrollmentId: number }> {
+  const members = (await request('POST', '/members', {
+    tenant_id: TENANT,
+    name: a.name,
+    parent_name: a.guardian ?? null,
+    parent_phone: a.phone,
+    program: 'badminton',
+    joined: a.joinedOn,
+    status: 'active',
+    venue: 'narsingi',
+    notes: a.note ?? null,
+  })) as Array<{ id: number }>
+  const memberId = members?.[0]?.id
+  if (!memberId) throw new CloudError('The student was not created.', 500)
+
+  // Next renewal is the chosen day, this month or next if it has passed.
+  const now = new Date()
+  const day = Math.min(Math.max(a.feeDueDay, 1), 28)
+  const renewal = new Date(now.getFullYear(), now.getMonth(), day)
+  if (renewal < now) renewal.setMonth(renewal.getMonth() + 1)
+
+  const enrolments = (await request('POST', '/enrollments', {
+    tenant_id: TENANT,
+    member_id: memberId,
+    centre_id: a.centreId,
+    batch_id: a.batchId,
+    sport: 'badminton',
+    plan_months: 1,
+    custom_amount: a.customFee ?? null,
+    joined_on: a.joinedOn,
+    renewal_on: renewal.toISOString().slice(0, 10),
+    status: 'active',
+  })) as Array<{ id: number }>
+  const enrollmentId = enrolments?.[0]?.id
+  if (!enrollmentId) throw new CloudError('The student was created without an enrolment.', 500)
+
+  track('student_added', { batch: a.batchId })
+  return { memberId, enrollmentId }
+}
+
+export async function updateStudent(a: {
+  memberId: number
+  enrollmentId: number
+  name: string
+  phone: string
+  guardian?: string
+  batchId: number
+  active: boolean
+  customFee?: number | null
+  note?: string
+}): Promise<void> {
+  await request('PATCH', `/members?id=eq.${a.memberId}&tenant_id=eq.${TENANT}`, {
+    name: a.name,
+    parent_name: a.guardian ?? null,
+    parent_phone: a.phone,
+    status: a.active ? 'active' : 'discontinued',
+    notes: a.note ?? null,
+    ...(a.active ? {} : { discontinued_on: new Date().toISOString().slice(0, 10) }),
+  })
+  await request('PATCH', `/enrollments?id=eq.${a.enrollmentId}&tenant_id=eq.${TENANT}`, {
+    batch_id: a.batchId,
+    custom_amount: a.customFee ?? null,
+    status: a.active ? 'active' : 'discontinued',
+    ...(a.active ? {} : { discontinued_on: new Date().toISOString().slice(0, 10) }),
+  })
+  track(a.active ? 'student_updated' : 'student_discontinued', {})
+}
+
+/**
+ * An activity ping for Academy Manager.
+ *
+ * The console's activity feed reads `events`, not `members` — so a
+ * student added without one of these is real in the database and
+ * invisible in the console, which is exactly the gap that made this
+ * function necessary. Carries no names or numbers: what was done, not
+ * to whom.
+ */
+export function track(name: string, props: Record<string, unknown>): void {
+  try {
+    void fetch(`${PROJECT}/rest/v1/events`, {
+      method: 'POST',
+      headers: {
+        apikey: ANON,
+        Authorization: `Bearer ${ANON}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify({
+        tenant_id: TENANT,
+        name,
+        page: (location.hash || '#/').slice(0, 60),
+        props: { ...props, ver: __APP_VERSION__ },
+      }),
+      keepalive: true,
+    }).catch(() => {})
+  } catch {
+    /* an unreported action is better than a broken one */
+  }
+}
+
+/* ---------------------------------------------------------------
    Structure reads
    --------------------------------------------------------------- */
 

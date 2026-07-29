@@ -13,6 +13,8 @@ import { buildEmptyData, buildSeedData, DEFAULT_SETTINGS } from './seed'
 import { allImages, putRaw } from './images'
 import { reportIssue } from './telemetry'
 import {
+  addStudent as cloudAddStudent,
+  updateStudent as cloudUpdateStudent,
   isSignedIn,
   loadEverything,
   refreshToken,
@@ -232,6 +234,21 @@ interface Ctx {
   loading: boolean
   /** Non-null when the last read failed; the pages show stale data with a banner. */
   loadError: string | null
+  /** Create or update a student, in Postgres. */
+  saveStudent: (input: {
+    id?: string
+    memberId?: number
+    enrollmentId?: number
+    name: string
+    phone: string
+    guardian?: string
+    batchId: string
+    joinedOn: string
+    feeDueDay: number
+    customFee?: number | null
+    active: boolean
+    note?: string
+  }) => Promise<{ ok: boolean; message: string }>
   /** Re-read everything. Called after any write, because the database
       may have changed more than the write did — a payment moves a
       renewal date and closes a reminder. */
@@ -255,6 +272,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const centreId = useRef(0)
   const toastId = useRef(0)
   const firstSave = useRef(true)
   const lastSaveError = useRef<string | null>(null)
@@ -286,6 +304,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true)
       const raw = await loadEverything()
+      centreId.current = raw.centreId
       setData((prev) => assemble({ ...raw, passcode: prev.settings.passcode }))
       setLoadError(null)
     } catch (err) {
@@ -421,6 +440,73 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [data.settings.passcode],
   )
 
+  /* Student writes.
+
+     These go to Postgres and then re-read everything, rather than
+     patching the local copy. A write usually changes more than it
+     says — a new enrolment appears in reminder_queue the moment its
+     renewal date lands in range — and the only way to be sure the
+     screen matches the database is to ask the database. */
+  const saveStudent = useCallback(
+    async (input: {
+      id?: string
+      memberId?: number
+      enrollmentId?: number
+      name: string
+      phone: string
+      guardian?: string
+      batchId: string
+      joinedOn: string
+      feeDueDay: number
+      customFee?: number | null
+      active: boolean
+      note?: string
+    }) => {
+      if (!isSignedIn()) {
+        return { ok: false, message: 'Not signed in to the academy database.' }
+      }
+      try {
+        const batchId = Number(input.batchId)
+        if (!batchId) return { ok: false, message: 'Pick a batch first.' }
+
+        if (input.memberId && input.enrollmentId) {
+          await cloudUpdateStudent({
+            memberId: input.memberId,
+            enrollmentId: input.enrollmentId,
+            name: input.name,
+            phone: input.phone,
+            guardian: input.guardian,
+            batchId,
+            active: input.active,
+            customFee: input.customFee ?? null,
+            note: input.note,
+          })
+        } else {
+          await cloudAddStudent({
+            name: input.name,
+            phone: input.phone,
+            guardian: input.guardian,
+            centreId: centreId.current,
+            batchId,
+            joinedOn: input.joinedOn,
+            feeDueDay: input.feeDueDay,
+            customFee: input.customFee ?? null,
+            note: input.note,
+          })
+        }
+        await refresh()
+        return { ok: true, message: '' }
+      } catch (err) {
+        reportIssue('save student', err)
+        return {
+          ok: false,
+          message: err instanceof Error ? err.message : 'Could not save to the academy database.',
+        }
+      }
+    },
+    [refresh],
+  )
+
   /* One-time device setup: the only moment a password is involved. It
      is never stored — what is kept is the refresh token Supabase
      returns, sealed under the PIN. */
@@ -463,10 +549,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => ({
       data, update, setSettings, resetToDemo, startFresh,
       importJSON, exportJSON, authed, login, enrol, enrolled: vault.isEnrolled(), logout, toasts, toast,
-      loading, loadError, refresh,
+      loading, loadError, refresh, saveStudent,
     }),
     [data, update, setSettings, resetToDemo, startFresh, importJSON,
-     exportJSON, authed, login, enrol, logout, toasts, toast, loading, loadError, refresh],
+     exportJSON, authed, login, enrol, logout, toasts, toast, loading, loadError, refresh, saveStudent],
   )
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
