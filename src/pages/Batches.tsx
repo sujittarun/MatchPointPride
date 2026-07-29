@@ -11,8 +11,10 @@ import {
   IconChevronRight,
   IconClock,
   IconPlus,
+  IconUserPlus,
   IconUsers,
 } from '../components/icons'
+import { StudentSheet } from '../components/StudentSheet'
 
 const KIND_LABEL: Record<BatchKind, string> = {
   kids: 'Kids',
@@ -31,6 +33,7 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 export default function Batches() {
   const { data } = useStore()
   const [editing, setEditing] = useState<Batch | 'new' | null>(null)
+  const [addStudent, setAddStudent] = useState(false)
   const [filter, setFilter] = useState<BatchKind | 'all'>('all')
 
   const batches = useMemo(
@@ -90,6 +93,15 @@ export default function Batches() {
         ))}
       </div>
 
+      <div className="section__head">
+        <h2 className="t-h2">
+          {filter === 'all' ? 'All batches' : `${KIND_LABEL[filter]} batches`}
+        </h2>
+        <button className="btn btn--ghost btn--sm" onClick={() => setEditing('new')}>
+          <IconPlus size={15} /> New batch
+        </button>
+      </div>
+
       {batches.length === 0 ? (
         <Empty
           icon={<IconBatches size={22} />}
@@ -109,13 +121,16 @@ export default function Batches() {
         </div>
       )}
 
-      <button className="fab" onClick={() => setEditing('new')} aria-label="Add batch">
-        <IconPlus size={24} />
+      {/* Students get added far more often than batches, so the thumb-reachable
+          button is the one for students. */}
+      <button className="fab" onClick={() => setAddStudent(true)} aria-label="Add student">
+        <IconUserPlus size={24} />
       </button>
 
-      <BatchSheet
-        value={editing}
-        onClose={() => setEditing(null)}
+      <BatchSheet value={editing} onClose={() => setEditing(null)} />
+      <StudentSheet
+        value={addStudent ? 'new' : null}
+        onClose={() => setAddStudent(false)}
       />
     </main>
   )

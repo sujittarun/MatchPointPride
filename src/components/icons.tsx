@@ -246,6 +246,14 @@ export const IconUsers = (p: P) => (
   </S>
 )
 
+export const IconUserPlus = (p: P) => (
+  <S {...p}>
+    <circle cx="10" cy="7.5" r="3.5" />
+    <path d="M3.5 20c0-3.6 2.9-6 6.5-6 1 0 2 .2 2.8.5" />
+    <path d="M18 14v6M15 17h6" />
+  </S>
+)
+
 export const IconSpark = (p: P) => (
   <S {...p}>
     <path d="M12 3v5M12 16v5M3 12h5M16 12h5" />

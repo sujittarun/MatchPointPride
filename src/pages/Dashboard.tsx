@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useStore } from '../lib/store'
 import { navigate } from '../lib/router'
 import {
@@ -16,6 +16,7 @@ import {
 } from '../lib/selectors'
 import { Stat } from '../components/ui'
 import { ACADEMY } from '../lib/academy'
+import { StudentSheet } from '../components/StudentSheet'
 import { BarChart, HBarChart, seriesColor } from '../components/charts'
 import {
   IconArrowDown,
@@ -28,6 +29,7 @@ import {
 
 export default function Dashboard() {
   const { data } = useStore()
+  const [addStudent, setAddStudent] = useState(false)
   const d = useMemo(() => dashboard(data), [data])
   const months = useMemo(() => lastMonths(6), [])
   const series = useMemo(() => moneyByMonth(data.transactions, months), [data.transactions, months])
@@ -243,11 +245,16 @@ export default function Dashboard() {
           <button className="btn" onClick={() => navigate('/staff')}>
             <IconStaff size={16} /> Attendance
           </button>
-          <button className="btn" onClick={() => navigate('/batches')}>
+          <button className="btn" onClick={() => setAddStudent(true)}>
             <IconPlus size={16} /> Add student
           </button>
         </div>
       </div>
+
+      <StudentSheet
+        value={addStudent ? 'new' : null}
+        onClose={() => setAddStudent(false)}
+      />
     </main>
   )
 }
