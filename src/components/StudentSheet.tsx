@@ -9,6 +9,7 @@ import {
   ordinal,
   todayISO,
 } from '../lib/format'
+import { findExisting } from '../lib/selectors'
 import { Field, Sheet } from './ui'
 
 /* Add / edit a student. Lives here rather than inside a page so it can
@@ -27,8 +28,18 @@ export function StudentSheet({
 }) {
   const { data, saveStudent, toast } = useStore()
   const [saving, setSaving] = useState(false)
-  const isNew = value === 'new'
-  const s = isNew ? null : value
+
+  /* Someone the phone lookup found and the owner picked. Held here so
+     the sheet can switch from "new student" to editing or bringing back
+     an existing one without the caller having to reopen it. */
+  const [picked, setPicked] = useState<Student | null>(null)
+  const [ignoreMatches, setIgnoreMatches] = useState(false)
+
+  const isNew = value === 'new' && picked === null
+  const s = picked ?? (value === 'new' ? null : value)
+  /* A student with no live enrolment is not being edited, they are being
+     brought back — which is a new spell, not a status field. */
+  const rejoining = picked !== null && !picked.active
 
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -42,12 +53,18 @@ export function StudentSheet({
 
   const feeOf = (id: string) => data.batches.find((b) => b.id === id)?.fee
 
-  const openKey = value === null ? '' : isNew ? `new:${batchId}` : (s as Student).id
+  // The mode is part of the key: switching an inactive student from
+  // "edit" to "bring back" has to re-run the reset below, because a new
+  // spell starts today rather than on their original joining date.
+  const openKey =
+    value === null ? '' : s ? `s:${s.id}:${rejoining ? 'back' : 'edit'}` : `new:${batchId}`
   if (openKey !== key) {
     const startBatch = s?.batchId ?? batchId ?? data.batches[0]?.id ?? ''
     setKey(openKey)
     setName(s?.name ?? '')
-    setPhone(s?.phone ?? '')
+    // Keep what was typed when a match was picked — the number is how
+    // they were found, and blanking it would look like a lost keystroke.
+    setPhone(s?.phone ?? phone)
     setGuardian(s?.guardian ?? '')
     setBatch(startBatch)
     // A new student inherits the batch's fee — otherwise opening this from
@@ -58,9 +75,25 @@ export function StudentSheet({
         : String(defaultFee ?? feeOf(startBatch) ?? ''),
     )
     setDueDay(s ? String(s.feeDueDay) : '1')
-    setJoinedOn(s?.joinedOn ?? todayISO())
-    setActive(s?.active ?? true)
+    // A rejoin starts today. Their original joining date is history, and
+    // it is kept — it is the start of their first spell, not this one.
+    setJoinedOn(rejoining ? todayISO() : (s?.joinedOn ?? todayISO()))
+    setActive(rejoining ? true : (s?.active ?? true))
   }
+
+  /* The lookup.
+   *
+   * BOTH the name and the number have to match. A number alone is not
+   * enough: brothers and sisters are on the same parent's phone, so a
+   * number-only match would offer to bring back the wrong child.
+   *
+   * The name match is deliberately forgiving on trailing words, because
+   * a surname gets typed sometimes and not others — "Aarav" finds
+   * "Aarav Sharma" — but it is a word boundary, so "Ram" never matches
+   * "Ramesh". Everyone is already in memory, so this costs no request.
+   */
+  const matches =
+    isNew && !ignoreMatches ? findExisting(data.students, name, phone) : []
 
   /* Switching batch on a new student re-applies that batch's fee. */
   const pickBatch = (id: string) => {
@@ -97,7 +130,9 @@ export function StudentSheet({
     const r = await saveStudent({
       id: s?.id,
       memberId: s?.memberId,
-      enrollmentId: s?.enrollmentId,
+      // Withheld on a rejoin: no enrolment id means "open a new spell
+      // for this person" rather than "edit the one they had".
+      enrollmentId: rejoining ? undefined : s?.enrollmentId,
       name: trimmed,
       phone: phone.replace(/\s/g, ''),
       guardian: guardian.trim() || undefined,
@@ -108,6 +143,7 @@ export function StudentSheet({
       // otherwise the batch rule keeps owning it.
       customFee: feeVal === (feeOf(batch) ?? -1) ? null : feeVal,
       active,
+      wasActive: s?.active,
     })
     setSaving(false)
 
@@ -115,27 +151,106 @@ export function StudentSheet({
       toast(r.message, 'bad')
       return
     }
-    toast(isNew ? 'Student added.' : 'Student updated.')
+    toast(
+      rejoining
+        ? `${trimmed} is back on the roll.`
+        : isNew
+          ? 'Student added.'
+          : !active && s?.active
+            ? `${trimmed} marked as left. Reminders stop.`
+            : 'Student updated.',
+    )
+    close()
+  }
+
+  /* Picking a match rewrites what this sheet is about, so the reset
+     above has to run — it keys off the subject's id. */
+  const close = () => {
+    setPicked(null)
+    setIgnoreMatches(false)
     onClose()
   }
 
   return (
     <Sheet
       open={value !== null}
-      onClose={onClose}
-      title={isNew ? 'New student' : 'Edit student'}
-      subtitle={s ? `Joined ${dateLabelFull(s.joinedOn)}` : undefined}
+      onClose={close}
+      title={rejoining ? 'Bring back' : isNew ? 'New student' : 'Edit student'}
+      subtitle={
+        rejoining && s
+          ? `Last trained here ${s.spells?.length ? dateLabelFull(s.spells[s.spells.length - 1].to ?? s.joinedOn) : dateLabelFull(s.joinedOn)}`
+          : s
+            ? `Joined ${dateLabelFull(s.joinedOn)}`
+            : undefined
+      }
       footer={
         <>
-          <button className="btn" onClick={onClose}>
+          <button className="btn" onClick={close}>
             Cancel
           </button>
           <button className="btn btn--primary" onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : isNew ? 'Add student' : 'Save'}
+            {saving ? 'Saving…' : rejoining ? 'Bring back' : isNew ? 'Add student' : 'Save'}
           </button>
         </>
       }
     >
+      {matches.length > 0 && (
+        <div
+          className="card card--tight"
+          style={{
+            marginBottom: 14,
+            borderColor: 'rgba(250,178,25,0.28)',
+            background: 'rgba(250,178,25,0.06)',
+          }}
+        >
+          <div className="t-label" style={{ marginBottom: 3 }}>
+            {matches.length === 1 ? 'This student is already on file' : 'Already on file'}
+          </div>
+          <p className="t-mut" style={{ lineHeight: 1.5, marginBottom: 10 }}>
+            Same name, same number. Bringing them back keeps their fee history,
+            attendance and everything else under one record.
+          </p>
+          <div className="col gap-8">
+            {matches.map((x) => {
+              const b = data.batches.find((z) => z.id === x.batchId)
+              const left = x.spells?.[x.spells.length - 1]?.to
+              return (
+                <button
+                  key={x.id}
+                  className="listrow tap"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setPicked(x)}
+                >
+                  <div className="listrow__main">
+                    <div className="listrow__title">{x.name}</div>
+                    <div className="listrow__meta">
+                      {b?.name ?? 'No batch'}
+                      {x.active
+                        ? ' · on the roll now'
+                        : left
+                          ? ` · left ${dateLabelFull(left)}`
+                          : ' · not training'}
+                    </div>
+                  </div>
+                  <div className="listrow__end">
+                    <span className={`badge ${x.active ? 'badge--good' : 'badge--warn'}`}>
+                      {x.active ? 'Open' : 'Bring back'}
+                    </span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+          <button
+            className="btn btn--sm btn--block"
+            style={{ marginTop: 10 }}
+            onClick={() => setIgnoreMatches(true)}
+          >
+            Not the same person — add anyway
+          </button>
+        </div>
+      )}
+
       <div className="form-grid">
         <Field label="Name" span>
           <input
@@ -221,24 +336,66 @@ export function StudentSheet({
           />
         </Field>
 
-        <Field label="Status" span>
-          <div className="seg" style={{ width: '100%' }}>
-            <button
-              type="button"
-              className={`seg__item grow${active ? ' seg__item--on' : ''}`}
-              onClick={() => setActive(true)}
+        {/* On the roll: the one status change available is leaving. */}
+        {s && s.active && !rejoining && (
+          <Field
+            label="Status"
+            hint={
+              active
+                ? undefined
+                : 'Reminders stop, and they come off the active count in Academy Manager.'
+            }
+            span
+          >
+            <div className="seg" style={{ width: '100%' }}>
+              <button
+                type="button"
+                className={`seg__item grow${active ? ' seg__item--on' : ''}`}
+                onClick={() => setActive(true)}
+              >
+                Training
+              </button>
+              <button
+                type="button"
+                className={`seg__item grow${!active ? ' seg__item--on' : ''}`}
+                onClick={() => setActive(false)}
+              >
+                Has left
+              </button>
+            </div>
+          </Field>
+        )}
+
+        {/* Not on the roll. Coming back is a new spell, not a toggle:
+            reusing the old enrolment would leave the renewal date at
+            whenever they left, and reminder_queue would greet them with
+            "more than 15 days overdue" on their first morning back. */}
+        {s && !s.active && !rejoining && (
+          <Field label="Status" span>
+            <div
+              className="row gap-10"
+              style={{
+                padding: 12,
+                borderRadius: 'var(--r-md)',
+                background: 'var(--surface-2)',
+                border: '1px solid var(--line)',
+                alignItems: 'center',
+              }}
             >
-              Active
-            </button>
-            <button
-              type="button"
-              className={`seg__item grow${!active ? ' seg__item--on' : ''}`}
-              onClick={() => setActive(false)}
-            >
-              Inactive
-            </button>
-          </div>
-        </Field>
+              <div className="grow">
+                <div style={{ fontSize: '0.86rem', fontWeight: 600 }}>Not training</div>
+                <div className="t-mut">
+                  {s.spells?.[s.spells.length - 1]?.to
+                    ? `Left ${dateLabelFull(s.spells[s.spells.length - 1].to!)}`
+                    : 'No longer on the roll'}
+                </div>
+              </div>
+              <button className="btn btn--sm" onClick={() => setPicked(s)}>
+                Bring back
+              </button>
+            </div>
+          </Field>
+        )}
       </div>
     </Sheet>
   )

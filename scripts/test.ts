@@ -10,7 +10,10 @@ import {
   renderReminderMessage, reminderStats, revenueBySource, smsLink,
   staffLifetime, staffMonthStats, workingDays, whatsappLink,
   monthsPhrase, paidForMonth, unpaidMonthsFor,
+  findExisting, phoneKey, sameName,
 } from '../src/lib/selectors'
+import { toStudents } from '../src/lib/mapping'
+import type { EnrollmentRow, MemberRow } from '../src/lib/cloud'
 import { buildEmptyData, buildSeedData } from '../src/lib/seed'
 import { normalise } from '../src/lib/store'
 import { parseCSV, studentsFromCSV, studentsToCSV } from '../src/lib/csv'
@@ -455,6 +458,97 @@ eq('phrase: two months reads as one ask', monthsPhrase(['2026-06', '2026-07']), 
 eq('phrase: three months', monthsPhrase(['2026-05', '2026-06', '2026-07']), 'May, June and July')
 eq('phrase: none', monthsPhrase([]), 'this month')
 eq('phrase: undefined', monthsPhrase(undefined), 'this month')
+
+/* ================= leaving and coming back =================
+   One member, many enrolments. Each enrolment is a spell, and the gap
+   between two of them is the months a student was away — which is what
+   makes tenure honest and what the profile renders as "Rejoined".
+   The alternative, a second member row per return, strands their fee
+   history on an id nothing reads any more. */
+const member = (over: Partial<MemberRow> = {}): MemberRow => ({
+  id: 1, name: 'Aarav Sharma', phone: null, parent_name: 'Sunita',
+  parent_phone: '9876543210', joined: '2025-06-01', status: 'active',
+  notes: null, ...over,
+})
+const enrol = (over: Partial<EnrollmentRow> = {}): EnrollmentRow => ({
+  id: 10, member_id: 1, centre_id: 1, batch_id: 5, sport: 'badminton',
+  plan_months: 1, custom_amount: null, joined_on: '2025-06-01',
+  renewal_on: '2026-08-01', status: 'active', discontinued_on: null, ...over,
+})
+
+const rejoined = toStudents(
+  [member()],
+  [
+    enrol({ id: 10, joined_on: '2025-06-01', discontinued_on: '2026-04-12', status: 'discontinued' }),
+    enrol({ id: 11, joined_on: '2026-07-01', status: 'active' }),
+  ],
+  { 5: 2000 },
+)
+eq('rejoin: one student, not two', rejoined.length, 1)
+eq('rejoin: both spells kept', rejoined[0].spells?.length, 2)
+eq('rejoin: spells oldest first', rejoined[0].spells?.[0].from, '2025-06-01')
+eq('rejoin: the closed spell keeps its end date', rejoined[0].spells?.[0].to, '2026-04-12')
+eq('rejoin: the live spell is open', rejoined[0].spells?.[1].to, undefined)
+eq('rejoin: reads as active', rejoined[0].active, true)
+eq('rejoin: the live enrolment is the one writes address', rejoined[0].enrollmentId, 11)
+
+const gone = toStudents(
+  [member({ status: 'discontinued' })],
+  [enrol({ discontinued_on: '2026-04-12', status: 'discontinued' })],
+  { 5: 2000 },
+)
+eq('left: reads as inactive', gone[0].active, false)
+eq('left: the spell is closed', gone[0].spells?.[0].to, '2026-04-12')
+
+eq('a member with no enrolment is not a student yet',
+   toStudents([member()], [], { 5: 2000 }).length, 0)
+
+/* Two live enrolments cannot happen — reenroll_member refuses to create
+   the second — but if one ever did, picking must be deterministic
+   rather than order-of-arrival. */
+const twoLive = toStudents(
+  [member()],
+  [enrol({ id: 10, joined_on: '2025-06-01' }), enrol({ id: 11, joined_on: '2026-07-01' })],
+  { 5: 2000 },
+)
+eq('two live enrolments: the earlier one wins, not the last read', twoLive[0].enrollmentId, 10)
+
+/* ================= finding someone already on file =================
+   Name AND number. A parent's phone carries all their children, so a
+   number-only match would offer to bring back the wrong one. */
+eq('phoneKey strips +91', phoneKey('+91 98765 43210'), '9876543210')
+eq('phoneKey strips a leading 0', phoneKey('09876543210'), '9876543210')
+eq('phoneKey of a short number stays short', phoneKey('12345'), '12345')
+
+ok('sameName exact', sameName('Aarav Sharma', 'Aarav Sharma'))
+ok('sameName ignores case and spacing', sameName('  aarav   SHARMA ', 'Aarav Sharma'))
+ok('sameName finds the surname when only a first name was typed',
+   sameName('Aarav Sharma', 'Aarav'))
+ok('sameName works the other way round', sameName('Aarav', 'Aarav Sharma'))
+ok('sameName does NOT match across a word boundary', !sameName('Ramesh', 'Ram'))
+ok('sameName does not match a different child', !sameName('Diya Sharma', 'Aarav Sharma'))
+ok('sameName rejects an empty name', !sameName('', 'Aarav'))
+
+const roll = [
+  { id: 'a', name: 'Aarav Sharma', phone: '9876543210', active: false },
+  { id: 'b', name: 'Diya Sharma', phone: '9876543210', active: true },
+  { id: 'c', name: 'Aarav Reddy', phone: '9000000001', active: true },
+] as unknown as Parameters<typeof findExisting>[0]
+
+eq('siblings: the number alone does not decide',
+   findExisting(roll, 'Aarav', '9876543210').map((s) => s.id), ['a'])
+eq('the other sibling on the same number',
+   findExisting(roll, 'Diya', '9876543210').map((s) => s.id), ['b'])
+eq('same name, different number is a different person',
+   findExisting(roll, 'Aarav Sharma', '9000000001').map((s) => s.id), [])
+eq('a genuinely new child on a parent number matches nobody',
+   findExisting(roll, 'Kabir', '9876543210').map((s) => s.id), [])
+eq('an incomplete number never matches',
+   findExisting(roll, 'Aarav', '98765').map((s) => s.id), [])
+eq('an empty name never matches',
+   findExisting(roll, '   ', '9876543210').map((s) => s.id), [])
+eq('+91 and the bare number are the same person',
+   findExisting(roll, 'Aarav Sharma', '+91 98765 43210').map((s) => s.id), ['a'])
 
 /* ================= report ================= */
 console.log(`\n  PASS ${pass}   FAIL ${fails.length}\n`)

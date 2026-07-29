@@ -25,6 +25,8 @@ import {
   saveBatch as cloudSaveBatch,
   saveStaff as cloudSaveStaff,
   updateStudent as cloudUpdateStudent,
+  discontinue as cloudDiscontinue,
+  reenroll as cloudReenroll,
   isSignedIn,
   loadEverything,
   refreshToken,
@@ -218,7 +220,14 @@ interface Ctx {
   saveStaff: (a: { id?: string; name: string; role: string; phone?: string; active?: boolean }) => Promise<{ ok: boolean; message: string }>
   removeStaff: (id: string) => Promise<{ ok: boolean; message: string }>
   markStaffDay: (a: { coachId: string; date: string; status: 'present' | 'absent' }) => Promise<{ ok: boolean; message: string }>
-  /** Create or update a student, in Postgres. */
+  /**
+   * Create, edit, discontinue or bring back a student, in Postgres.
+   *
+   * Which of the four it is comes from the ids: no memberId is a new
+   * person; a memberId with no enrollmentId is someone returning; both
+   * is an edit, and `wasActive` is what tells an edit apart from a
+   * discontinue.
+   */
   saveStudent: (input: {
     id?: string
     memberId?: number
@@ -231,6 +240,8 @@ interface Ctx {
     feeDueDay: number
     customFee?: number | null
     active: boolean
+    /** Their status before this save. Absent for a new student. */
+    wasActive?: boolean
     note?: string
   }) => Promise<{ ok: boolean; message: string }>
   /** Re-read everything. Called after any write, because the database
@@ -520,6 +531,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       feeDueDay: number
       customFee?: number | null
       active: boolean
+      wasActive?: boolean
       note?: string
     }) => {
       if (!isSignedIn()) {
@@ -530,6 +542,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!batchId) return { ok: false, message: 'Pick a batch first.' }
 
         if (input.memberId && input.enrollmentId) {
+          /* Details always; the spell only when it actually changes.
+             Leaving and returning are not field edits — each opens or
+             closes a spell across two tables, so each is its own call. */
           await cloudUpdateStudent({
             memberId: input.memberId,
             enrollmentId: input.enrollmentId,
@@ -537,9 +552,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             phone: input.phone,
             guardian: input.guardian,
             batchId,
-            active: input.active,
             customFee: input.customFee ?? null,
             note: input.note,
+          })
+          if (input.wasActive === true && !input.active) {
+            await cloudDiscontinue({ memberId: input.memberId })
+          }
+        } else if (input.memberId) {
+          /* A returning student: same person, new spell. Knowing the
+             member and creating another one anyway is what strands their
+             history, so this branch is on the id alone — there is no
+             path from here that inserts a second member row. */
+          await cloudReenroll({
+            memberId: input.memberId,
+            centreId: centreId.current,
+            batchId,
+            feeDueDay: input.feeDueDay,
+            joinedOn: input.joinedOn,
+            customFee: input.customFee ?? null,
           })
         } else {
           await cloudAddStudent({

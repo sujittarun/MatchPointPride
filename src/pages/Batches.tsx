@@ -48,6 +48,7 @@ export default function Batches() {
   const [editing, setEditing] = useState<Batch | 'new' | null>(null)
   const [addStudent, setAddStudent] = useState(false)
   const [filter, setFilter] = useState<BatchKind | 'all'>('all')
+  const [query, setQuery] = useState('')
 
   const batches = useMemo(
     () => (filter === 'all' ? data.batches : data.batches.filter((b) => b.kind === filter)),
@@ -68,6 +69,27 @@ export default function Batches() {
 
   const totalActive = data.students.filter((s) => s.active).length
 
+  /* Find anyone, including the students who have left.
+   *
+   * Without this the only way to reach someone who stopped coming is to
+   * remember which batch they were in and scroll its roster — and those
+   * rosters only ever grow, because a departed student stays on the one
+   * they left. Name or number, because the owner remembers one or the
+   * other, rarely both. */
+  const hits = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (q.length < 2) return []
+    const digits = q.replace(/\D/g, '')
+    return data.students
+      .filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          (digits.length >= 3 && s.phone.includes(digits)),
+      )
+      .sort((a, b) => (a.active === b.active ? a.name.localeCompare(b.name) : a.active ? -1 : 1))
+      .slice(0, 12)
+  }, [data.students, query])
+
   return (
     <main className="page">
       <div className="page__head">
@@ -76,6 +98,56 @@ export default function Batches() {
           {data.batches.length} batches · {totalActive} active students
         </p>
       </div>
+
+      <input
+        className="input"
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Find a student by name or number"
+        aria-label="Find a student"
+        autoComplete="off"
+        style={{ marginBottom: 14 }}
+      />
+
+      {query.trim().length >= 2 && (
+        <div className="card card--tight" style={{ marginBottom: 16 }}>
+          {hits.length === 0 ? (
+            <p className="t-mut" style={{ padding: '6px 0' }}>
+              Nobody by that name or number — including students who have left.
+            </p>
+          ) : (
+            <div className="list">
+              {hits.map((s) => {
+                const b = data.batches.find((z) => z.id === s.batchId)
+                return (
+                  <button
+                    key={s.id}
+                    className="listrow tap"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/student/${s.id}`)}
+                  >
+                    <div className="listrow__main">
+                      <div className="listrow__title">{s.name}</div>
+                      <div className="listrow__meta">
+                        {b?.name ?? 'No batch'}
+                        {s.phone ? ` · ${s.phone}` : ''}
+                      </div>
+                    </div>
+                    <div className="listrow__end">
+                      {s.active ? (
+                        <span className="badge badge--good">Training</span>
+                      ) : (
+                        <span className="badge badge--mute">Has left</span>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {mix.length > 0 && (
         <div className="card" style={{ marginBottom: 16 }}>

@@ -278,6 +278,50 @@ export function paidForMonth(t: Transaction): string {
  */
 export const ATTRIBUTABLE_MONTHS = 6
 
+/* ------------------------------------------------------------------
+   Finding someone who is already on file.
+
+   Both halves have to match. The number alone is not identity — a
+   parent's phone carries every one of their children, so matching on it
+   would offer to bring back the wrong child. The name alone is not
+   identity either: two families produce two Aaravs soon enough.
+   ------------------------------------------------------------------ */
+
+/** Last ten digits, so +91 and 0-prefixes compare equal. */
+export function phoneKey(phone: string): string {
+  return (phone || '').replace(/\D/g, '').slice(-10)
+}
+
+/**
+ * Forgiving on trailing words, strict on the boundary.
+ *
+ * A surname gets typed sometimes and not others, so "Aarav" has to find
+ * "Aarav Sharma". But the match is on whole words — "Ram" must never
+ * find "Ramesh", or bringing someone back would attach a returning
+ * student to a stranger's fee history.
+ */
+export function sameName(a: string, b: string): boolean {
+  const norm = (n: string) =>
+    (n || '').toLowerCase().replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim()
+  const x = norm(a)
+  const y = norm(b)
+  if (!x || !y) return false
+  return x === y || x.startsWith(`${y} `) || y.startsWith(`${x} `)
+}
+
+/** Students already on file under this name AND this number. */
+export function findExisting(
+  students: Student[],
+  name: string,
+  phone: string,
+): Student[] {
+  // Half a number is not a number, and a blank name matches everyone on
+  // it — either would turn "still typing" into a confident wrong answer.
+  const key = phoneKey(phone)
+  if (key.length !== 10 || !name.trim()) return []
+  return students.filter((s) => phoneKey(s.phone) === key && sameName(s.name, name))
+}
+
 /** Enrolment history, oldest first. Always at least one period. */
 export function spellsOf(student: Student): Spell[] {
   if (student.spells?.length) return student.spells

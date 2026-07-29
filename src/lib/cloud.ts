@@ -416,12 +416,28 @@ export function markStaffAttendance(a: {
    --------------------------------------------------------------- */
 
 /**
+ * The next time the fee falls due: the chosen day, this month or next if
+ * it has already passed.
+ *
+ * Calendar arithmetic, not money — this picks a date the owner named, it
+ * does not work out what anybody owes. What happens on that date is
+ * reminder_queue's business, and what it costs is resolve_fee's.
+ */
+function nextRenewal(feeDueDay: number, from = new Date()): string {
+  const day = Math.min(Math.max(feeDueDay, 1), 28)
+  const renewal = new Date(from.getFullYear(), from.getMonth(), day)
+  if (renewal < from) renewal.setMonth(renewal.getMonth() + 1)
+  return renewal.toISOString().slice(0, 10)
+}
+
+/**
  * Add a student: a member row and the enrolment that carries the money.
  *
  * Two inserts rather than one because the platform models them
  * separately — a person, and their current arrangement with the
- * academy. Someone who leaves and comes back gets a second enrolment
- * and keeps one member row, which is what makes their history readable.
+ * academy. Someone who leaves and comes back keeps this member row and
+ * gains a second enrolment — see reenroll() — which is what makes their
+ * history readable.
  */
 export async function addStudent(a: {
   name: string
@@ -449,12 +465,6 @@ export async function addStudent(a: {
   const memberId = members?.[0]?.id
   if (!memberId) throw new CloudError('The student was not created.', 500)
 
-  // Next renewal is the chosen day, this month or next if it has passed.
-  const now = new Date()
-  const day = Math.min(Math.max(a.feeDueDay, 1), 28)
-  const renewal = new Date(now.getFullYear(), now.getMonth(), day)
-  if (renewal < now) renewal.setMonth(renewal.getMonth() + 1)
-
   const enrolments = (await request('POST', '/enrollments', {
     tenant_id: TENANT,
     member_id: memberId,
@@ -464,7 +474,7 @@ export async function addStudent(a: {
     plan_months: 1,
     custom_amount: a.customFee ?? null,
     joined_on: a.joinedOn,
-    renewal_on: renewal.toISOString().slice(0, 10),
+    renewal_on: nextRenewal(a.feeDueDay),
     status: 'active',
   })) as Array<{ id: number }>
   const enrollmentId = enrolments?.[0]?.id
@@ -474,6 +484,14 @@ export async function addStudent(a: {
   return { memberId, enrollmentId }
 }
 
+/**
+ * Edit the person and their current arrangement.
+ *
+ * Details only. Leaving and coming back are NOT field edits — they open
+ * and close a spell across two tables that must agree — so they go
+ * through discontinue() and reenroll() below, which do it in one
+ * transaction server-side.
+ */
 export async function updateStudent(a: {
   memberId: number
   enrollmentId: number
@@ -481,7 +499,6 @@ export async function updateStudent(a: {
   phone: string
   guardian?: string
   batchId: number
-  active: boolean
   customFee?: number | null
   note?: string
 }): Promise<void> {
@@ -489,17 +506,79 @@ export async function updateStudent(a: {
     name: a.name,
     parent_name: a.guardian ?? null,
     parent_phone: a.phone,
-    status: a.active ? 'active' : 'discontinued',
     notes: a.note ?? null,
-    ...(a.active ? {} : { discontinued_on: new Date().toISOString().slice(0, 10) }),
   })
   await request('PATCH', `/enrollments?id=eq.${a.enrollmentId}&tenant_id=eq.${TENANT}`, {
     batch_id: a.batchId,
     custom_amount: a.customFee ?? null,
-    status: a.active ? 'active' : 'discontinued',
-    ...(a.active ? {} : { discontinued_on: new Date().toISOString().slice(0, 10) }),
   })
-  track(a.active ? 'student_updated' : 'student_discontinued', {})
+  track('student_updated', {})
+}
+
+/**
+ * The student has stopped coming.
+ *
+ * One call, not two PATCHes. The member row and every live enrolment
+ * have to move together: `active_players` in the operator console counts
+ * `members.status`, while reminder_queue reads the enrolment — so a half
+ * -applied change shows up as a wrong number in one place and a chased
+ * parent in the other.
+ *
+ * Closing them is all that is needed to stop the chasing. The reminder
+ * is not cancelled here because it is not stored anywhere — it simply
+ * stops coming back from reminder_queue.
+ */
+export async function discontinue(a: {
+  memberId: number
+  onDate?: string
+  reason?: string
+}): Promise<void> {
+  await rpc('discontinue_member', {
+    p_tenant: TENANT,
+    p_member: a.memberId,
+    p_on_date: a.onDate ?? null,
+    p_reason: a.reason ?? null,
+  })
+  track('student_discontinued', {})
+}
+
+/**
+ * The student is back.
+ *
+ * A NEW enrolment against the SAME member, which is the whole point:
+ * their payments, timeline and tenure stay under one id, and the gap
+ * between the two spells is what the profile renders as "Rejoined".
+ *
+ * Reusing the old enrolment instead — which is what flipping a status
+ * field would do — leaves renewal_on at the date they left, so
+ * reminder_queue puts someone who walked back in this morning straight
+ * into the +15-day blocked bucket. The renewal date is set from the fee
+ * day the owner picks, so they enter the ladder at day 0.
+ *
+ * The server refuses a second live enrolment, so this cannot quietly
+ * duplicate someone who never actually left.
+ */
+export async function reenroll(a: {
+  memberId: number
+  centreId: number
+  batchId: number
+  feeDueDay: number
+  joinedOn?: string
+  customFee?: number | null
+}): Promise<{ enrollment_id: number; renewal_on: string }> {
+  const out = await rpc<{ enrollment_id: number; renewal_on: string }>('reenroll_member', {
+    p_tenant: TENANT,
+    p_member: a.memberId,
+    p_centre: a.centreId,
+    p_batch: a.batchId,
+    p_sport: 'badminton',
+    p_joined_on: a.joinedOn ?? null,
+    p_renewal_on: nextRenewal(a.feeDueDay),
+    p_plan_months: 1,
+    p_custom_amount: a.customFee ?? null,
+  })
+  track('student_rejoined', { batch: a.batchId })
+  return out
 }
 
 /* ---------------- batches ---------------- */

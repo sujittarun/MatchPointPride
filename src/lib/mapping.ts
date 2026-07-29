@@ -107,17 +107,27 @@ export function toStudents(
   enrolments: EnrollmentRow[],
   fees: Record<number, number>,
 ): Student[] {
-  const byMember = new Map<number, EnrollmentRow>()
+  /* Every enrolment a member has ever had, oldest first. Someone who
+     left and came back has more than one, and each is a spell — which is
+     what the profile page renders as "Rejoined" and what makes tenure
+     skip the months they were away instead of counting them. */
+  const spellsOf = new Map<number, EnrollmentRow[]>()
   for (const e of enrolments) {
-    const prev = byMember.get(e.member_id)
-    // Someone who rejoined has more than one; the live one wins.
-    if (!prev || (prev.status !== 'active' && e.status === 'active')) byMember.set(e.member_id, e)
+    const list = spellsOf.get(e.member_id)
+    if (list) list.push(e)
+    else spellsOf.set(e.member_id, [e])
+  }
+  for (const list of spellsOf.values()) {
+    list.sort((a, b) => (a.joined_on ?? '') < (b.joined_on ?? '') ? -1 : 1)
   }
 
   const out: Student[] = []
   for (const m of members) {
-    const e = byMember.get(m.id)
-    if (!e) continue
+    const history = spellsOf.get(m.id)
+    if (!history) continue
+    // The live spell, or the most recent one if they have left. The
+    // server refuses two live at once, so "find" is unambiguous.
+    const e = history.find((x) => x.status === 'active') ?? history[history.length - 1]
     const active = e.status === 'active' && m.status !== 'discontinued'
     out.push({
       id: String(m.id),
@@ -132,12 +142,10 @@ export function toStudents(
       feeDueDay: e.renewal_on ? Number(e.renewal_on.slice(8, 10)) : 1,
       active,
       note: m.notes ?? undefined,
-      spells: [
-        {
-          from: e.joined_on ?? m.joined ?? '',
-          ...(e.discontinued_on ? { to: e.discontinued_on } : {}),
-        },
-      ],
+      spells: history.map((x) => ({
+        from: x.joined_on ?? m.joined ?? '',
+        ...(x.discontinued_on ? { to: x.discontinued_on } : {}),
+      })),
       // Carried so writes can address the right rows without a lookup.
       enrollmentId: e.id,
       memberId: m.id,
