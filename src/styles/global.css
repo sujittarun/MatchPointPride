@@ -1313,3 +1313,38 @@ ul {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* ------------------------------------------------------------------
+   The one thing on Home that moves.
+
+   Reserved for students the chase ladder has stopped on: past +15 days
+   nothing is sent any more, and a stopped reminder used to disappear
+   from every list, so the people who owed longest were the ones seen
+   least. A pulse earns its place only because nothing else on the
+   screen animates — the moment a second thing pulses, neither reads as
+   urgent. Motion is the signal, not decoration, so the reduced-motion
+   rule at the top of this file stills it without losing the dot.
+   ------------------------------------------------------------------ */
+.pulse-dot {
+  position: relative;
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--critical);
+}
+
+.pulse-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--critical);
+  animation: pulse-ring 2s var(--ease-out) infinite;
+}
+
+@keyframes pulse-ring {
+  0%   { transform: scale(1);   opacity: 0.55; }
+  70%  { transform: scale(3.2); opacity: 0; }
+  100% { transform: scale(3.2); opacity: 0; }
+}

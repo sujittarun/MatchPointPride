@@ -73,6 +73,14 @@ export type ReminderKind = 'fee' | 'renewal' | 'attendance' | 'custom'
 export type ReminderStatus = 'pending' | 'sent' | 'paid' | 'cancelled'
 export type ReminderChannel = 'whatsapp' | 'sms' | 'call'
 
+/** Why the platform will not message this parent. From reminder_queue. */
+export type BlockedReason =
+  | 'missing_phone'
+  | 'wrong_phone_number'
+  | 'whatsapp_opted_out'
+  | 'overdue_15_days'
+  | 'fee_not_set'
+
 export interface ReminderEvent {
   at: string
   action:
@@ -99,6 +107,15 @@ export interface Reminder {
   /** Oldest unpaid month's due date, so the longest overdue sorts first. */
   dueDate: string
   amount?: number
+  /**
+   * Set when the platform will NOT message this parent. `overdue_15_days`
+   * is the end of the ladder: automated chasing has stopped and a person
+   * has to call. That is the one state nobody is told about unless the
+   * app says so, which is why it is carried rather than collapsed.
+   */
+  blockedReason?: BlockedReason
+  /** Days past the due date. Negative before it. */
+  daysSince?: number
   /**
    * Unpaid months this fee reminder covers (YYYY-MM, oldest first). A
    * student behind by two months gets ONE reminder naming both, not two

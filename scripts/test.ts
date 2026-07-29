@@ -10,7 +10,7 @@ import {
   renderReminderMessage, reminderStats, revenueBySource, smsLink,
   staffLifetime, staffMonthStats, workingDays, whatsappLink,
   monthsPhrase, paidForMonth, unpaidMonthsFor,
-  findExisting, phoneKey, sameName,
+  findExisting, phoneKey, sameName, needsACall, blockedReminders,
 } from '../src/lib/selectors'
 import { toStudents } from '../src/lib/mapping'
 import type { EnrollmentRow, MemberRow } from '../src/lib/cloud'
@@ -557,6 +557,38 @@ eq('a return dated in the future bills from the future date',
    nextDueDate(10, '2026-09-05'), '2026-09-10')
 ok('a backdated return lands in the past, so the ladder can see it',
    nextDueDate(27, '2026-06-15') < '2026-07-29')
+
+/* ================= the students the ladder gave up on =================
+   Past +15 days the platform stops messaging and hands over to a
+   person. That handover used to go nowhere: the reminder dropped out of
+   every list, so the longer someone owed, the less visible they became.
+   needsACall is what Home surfaces instead. */
+const withBlocks = {
+  ...buildEmptyData(),
+  reminders: [
+    { id: 'a', studentId: '1', kind: 'fee', title: '', message: '', dueDate: '2026-07-01',
+      status: 'cancelled', createdAt: '', sendCount: 0, history: [],
+      blockedReason: 'overdue_15_days', daysSince: 28 },
+    { id: 'b', studentId: '2', kind: 'fee', title: '', message: '', dueDate: '2026-07-10',
+      status: 'cancelled', createdAt: '', sendCount: 0, history: [],
+      blockedReason: 'overdue_15_days', daysSince: 19 },
+    { id: 'c', studentId: '3', kind: 'fee', title: '', message: '', dueDate: '2026-07-20',
+      status: 'cancelled', createdAt: '', sendCount: 0, history: [],
+      blockedReason: 'missing_phone', daysSince: 9 },
+    { id: 'd', studentId: '4', kind: 'fee', title: '', message: '', dueDate: '2026-07-29',
+      status: 'pending', createdAt: '', sendCount: 0, history: [], daysSince: 0 },
+  ],
+} as unknown as AppData
+
+eq('only the ones the ladder stopped on', needsACall(withBlocks).map((r) => r.id), ['a', 'b'])
+eq('longest overdue first — those are the ones to ring',
+   needsACall(withBlocks).map((r) => r.daysSince), [28, 19])
+ok('a student merely due today is not on the call list',
+   !needsACall(withBlocks).some((r) => r.id === 'd'))
+ok('a missing phone is blocked but is not "stopped chasing"',
+   !needsACall(withBlocks).some((r) => r.id === 'c'))
+eq('every blocked reason is still reachable somewhere',
+   blockedReminders(withBlocks).map((r) => r.id), ['a', 'b', 'c'])
 
 /* ================= finding someone already on file =================
    Name AND number. A parent's phone carries all their children, so a

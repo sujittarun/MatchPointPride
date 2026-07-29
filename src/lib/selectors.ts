@@ -444,6 +444,30 @@ export function overdueReminders(data: AppData, today = todayISO()): Reminder[] 
   return openReminders(data).filter((r) => r.dueDate < today)
 }
 
+/**
+ * The students the ladder has given up on.
+ *
+ * Past +15 days the platform stops chasing by design and hands over to a
+ * person. Until now that handover went nowhere: the reminder dropped out
+ * of every list the owner looks at, so "we have stopped messaging them"
+ * and "this is dealt with" were indistinguishable, and the longer
+ * someone owed the less visible they became.
+ *
+ * Longest overdue first — the ones furthest gone are the ones to ring.
+ */
+export function needsACall(data: AppData): Reminder[] {
+  return data.reminders
+    .filter((r) => r.blockedReason === 'overdue_15_days')
+    .sort((a, b) => (b.daysSince ?? 0) - (a.daysSince ?? 0))
+}
+
+/** Everything the platform will not message, with the reason. */
+export function blockedReminders(data: AppData): Reminder[] {
+  return data.reminders
+    .filter((r) => !!r.blockedReason)
+    .sort((a, b) => (b.daysSince ?? 0) - (a.daysSince ?? 0))
+}
+
 export function reminderStats(data: AppData) {
   const all = data.reminders
   const pending = all.filter((r) => r.status === 'pending').length

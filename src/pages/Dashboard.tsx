@@ -13,6 +13,7 @@ import {
   activeStudentsOf,
   dashboard,
   moneyByMonth,
+  needsACall,
 } from '../lib/selectors'
 import { Stat } from '../components/ui'
 import { ACADEMY } from '../lib/academy'
@@ -31,6 +32,7 @@ export default function Dashboard() {
   const { data } = useStore()
   const [addStudent, setAddStudent] = useState(false)
   const d = useMemo(() => dashboard(data), [data])
+  const stopped = useMemo(() => needsACall(data), [data])
   const months = useMemo(() => lastMonths(6), [])
   const series = useMemo(() => moneyByMonth(data.transactions, months), [data.transactions, months])
 
@@ -62,6 +64,70 @@ export default function Dashboard() {
           {greeting}, {ACADEMY.ownerName}
         </h1>
       </div>
+
+      {/* ---------- the ladder has stopped: these need a person ----------
+
+          Above the overdue banner on purpose. Past +15 days the platform
+          stops messaging, and before this the reminder simply vanished
+          from every list — so the students who owed longest were the
+          ones the owner saw least. Nothing here sends anything; the only
+          actions are to call, or to record what they paid. */}
+      {stopped.length > 0 && (
+        <div
+          className="card"
+          style={{
+            marginBottom: 14,
+            background: 'rgba(208,59,59,0.10)',
+            borderColor: 'rgba(208,59,59,0.34)',
+          }}
+        >
+          <div className="row gap-10" style={{ alignItems: 'center', marginBottom: 10 }}>
+            <span className="pulse-dot" aria-hidden="true" />
+            <div className="grow">
+              <div className="card__title">
+                {stopped.length} need{stopped.length === 1 ? 's' : ''} a call
+              </div>
+              <div className="card__sub">
+                More than 15 days overdue — automatic reminders have stopped
+              </div>
+            </div>
+          </div>
+          <div className="list">
+            {stopped.slice(0, 4).map((r) => {
+              const s = data.students.find((x) => x.id === r.studentId)
+              return (
+                <div className="listrow" key={r.id}>
+                  <button
+                    className="listrow__main tap"
+                    style={{ cursor: 'pointer', textAlign: 'left', background: 'none', border: 0 }}
+                    onClick={() => navigate(`/student/${r.studentId}`)}
+                  >
+                    <div className="listrow__title">{s?.name ?? 'Student'}</div>
+                    <div className="listrow__meta">
+                      {r.daysSince} days overdue
+                      {r.amount ? ` · ${inr(r.amount)}` : ''}
+                    </div>
+                  </button>
+                  {s?.phone && (
+                    <a className="btn btn--sm" href={`tel:${s.phone}`} aria-label={`Call ${s.name}`}>
+                      Call
+                    </a>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          {stopped.length > 4 && (
+            <button
+              className="btn btn--sm btn--block"
+              style={{ marginTop: 10 }}
+              onClick={() => navigate('/reminders')}
+            >
+              See all {stopped.length}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ---------- needs attention ---------- */}
       {(d.overdue > 0 || d.unmarked > 0) && (

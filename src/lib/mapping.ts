@@ -188,6 +188,11 @@ export function toReminders(due: DueRow[], students: Student[]): Reminder[] {
       // that as a normal pending reminder would invite the owner to keep
       // firing automated chases past the point the ladder says stop.
       status: d.blocked_reason ? 'cancelled' : d.already_sent ? 'sent' : 'pending',
+      // Carried, not just collapsed into a status. "The ladder has
+      // stopped and a person must call" is a different instruction
+      // from "cancelled", and the owner needs to be told which.
+      blockedReason: (d.blocked_reason ?? undefined) as Reminder['blockedReason'],
+      daysSince: d.days_since,
       createdAt: d.due_date,
       lastSentAt: d.last_sent_at ?? undefined,
       sendCount: d.already_sent ? 1 : 0,
