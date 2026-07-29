@@ -5,3 +5,10 @@ dist-ssr
 .DS_Store
 .vite
 *.tsbuildinfo
+
+# Credentials must never reach a public repo. .mcp.json can hold an
+# access token if an MCP server is added with --scope project.
+.mcp.json
+.env
+.env.*
+!.env.example
