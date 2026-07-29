@@ -54,16 +54,45 @@ money-first; never leave TypeScript and Postgres both computing fees.
    them through `platform_errors()`. No student data is ever sent).
 3. ~~Insert the `mpp` row in `tenants`~~ (done — migration `0006`,
    `modules.booking = false`, `features.publicTimetable = false`).
-4. `src/lib/cloud.ts` — plain `fetch` against PostgREST. Delete
-   `selectors.ts:236-468` and the reminder replan in `store.tsx`. Call
-   `resolve_fee`, `record_fee_payment`, `apply_payment_coverage`,
-   `reminder_queue`.
+4. `src/lib/cloud.ts` — **written**: session, PostgREST reads, outbox,
+   and typed wrappers for `resolve_fee`, `reminder_queue`,
+   `record_fee_payment`, `void_payment`. Nothing in it computes.
+   **Not yet wired** — see "Before the switchover" below. Then delete
+   `selectors.ts:236-468` and the reminder replan in `store.tsx`.
 5. Only then: replace the PIN with a real Supabase session. The PIN can
    stay as the unlock gesture, but it must sit **on top of** a session,
    not instead of one — it is compared in JavaScript on a public page.
 6. `seed.ts` becomes a one-shot import script, not runtime state.
 
 Roughly 950 of 8,513 TS lines come out.
+
+## Before the switchover
+
+The staff login has to exist first — every read and write is scoped by
+RLS to a Supabase user carrying `app_metadata.am_role = 'staff'` and
+`app_metadata.tenant_id = 'mpp'`. Every other tenant already has one
+(`staff@leoacademy.in`, `staff@rajsports.in`, …).
+
+Creating it and setting its password is the owner's to do, in the
+Supabase dashboard — Authentication → Add user, then set
+
+```json
+{ "am_role": "staff", "tenant_id": "mpp" }
+```
+
+as that user's **App Metadata** (not User Metadata — `auth_role()` and
+`auth_tenant()` read `app_metadata`, and RLS grants nothing without it).
+
+Until that exists the cloud path cannot be exercised even once, and
+swapping a working local money path for an untested remote one is not a
+trade worth making. `signIn()` checks the tenant and role claims and
+fails with a readable message rather than showing an empty app, which is
+what an account created without its metadata would otherwise do.
+
+The one-shot import runs from the app, not from SQL: the owner's real
+batches, students and payments live in localStorage on his phone, so his
+backup is the only place they exist. `0008` seeded the centre and sport;
+nothing else about Pride is inventable from the platform side.
 
 ## Until then
 
