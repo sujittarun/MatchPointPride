@@ -14,6 +14,14 @@ export interface Batch {
   coachId?: string
   /** Default monthly fee suggested when adding a student to this batch. */
   fee: number
+  /**
+   * Where this batch's fees are collected. Batches may share one UPI ID or
+   * each have its own; the reminder message quotes whichever belongs to the
+   * student's batch.
+   */
+  upiId?: string
+  /** Name shown in the UPI app, quoted in the message so parents can check. */
+  upiName?: string
   capacity?: number
   /** Index 1-6 into the validated categorical series palette. */
   colorSlot: number
@@ -56,9 +64,19 @@ export type ReminderChannel = 'whatsapp' | 'sms' | 'call'
 
 export interface ReminderEvent {
   at: string
-  action: 'created' | 'sent' | 'resent' | 'paid' | 'cancelled' | 'reopened'
+  action:
+    | 'created'
+    | 'sent'
+    | 'resent'
+    | 'paid'
+    | 'cancelled'
+    | 'reopened'
+    | 'claimed'
+    | 'proof'
   channel?: ReminderChannel
   note?: string
+  /** Screenshot attached at this point in the timeline. */
+  imageId?: string
 }
 
 export interface Reminder {
@@ -80,6 +98,13 @@ export interface Reminder {
   createdAt: string
   lastSentAt?: string
   sendCount: number
+  /**
+   * The parent says they have paid but no screenshot has arrived. Held open
+   * deliberately: confirming without proof is how money goes missing.
+   */
+  awaitingProof?: boolean
+  /** IndexedDB key of the payment screenshot, once one is attached. */
+  proofImageId?: string
   history: ReminderEvent[]
 }
 
@@ -141,6 +166,10 @@ export interface Transaction {
   studentId?: string
   batchId?: string
   note?: string
+  /** Screenshot that evidences this payment, if one was supplied. */
+  proofImageId?: string
+  /** How the payment was confirmed when no screenshot arrived. */
+  verifiedBy?: 'screenshot' | 'bank' | 'call' | 'cash'
   createdAt: string
 }
 

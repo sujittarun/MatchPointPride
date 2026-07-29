@@ -330,8 +330,8 @@ export function studentProfile(data: AppData, studentId: string): StudentProfile
   const reminders = data.reminders.filter((r) => r.studentId === studentId)
   const unpaid = unpaidMonthsFor(data, student)
 
-  /* A year of months at most: enough to see a break and a payment pattern,
-     short enough to scroll on a phone. */
+  /* A year, which is three rows of the grid. Longer than that and the
+     early tiles are mostly "no record" noise. */
   const LEDGER_MONTHS = 12
   const firstMonth = spells[0].from.slice(0, 7)
   const months: string[] = []
@@ -463,7 +463,6 @@ export function applyFeePlan(draft: AppData, plan: FeePlan) {
     const r = draft.reminders.find((x) => x.id === id)
     if (!r) continue
     r.status = 'paid'
-    r.months = []
     r.history.push({ at: now, action: 'paid', note: 'Fees cleared' })
   }
 }
@@ -570,8 +569,21 @@ export function renderReminderMessage(
   const batch = batchById(data, student?.batchId)
   const due = reminder.dueDate
   const [y, m, d] = due.split('-')
-  const template = reminder.message?.trim() ? reminder.message : ACADEMY.reminderTemplate
+  /* Built in parts so the UPI sentence can be dropped entirely when the
+     batch has no UPI ID, rather than leaving a dangling "pay to:". */
+  let template: string
+  if (reminder.message?.trim()) {
+    template = reminder.message
+  } else {
+    const parts = [ACADEMY.reminderTemplate]
+    if (batch?.upiId) parts.push(ACADEMY.upiLine)
+    parts.push(ACADEMY.reminderSignoff)
+    template = parts.join(' ')
+  }
+
   return template
+    .replace(/\{upi\}/g, batch?.upiId ?? '')
+    .replace(/\{payee\}/g, batch?.upiName ? ` (${batch.upiName})` : '')
     .replace(/\{months\}/g, monthsPhrase(reminder.months))
     .replace(/\{guardian\}/g, student?.guardian || student?.name || 'there')
     .replace(/\{student\}/g, student?.name ?? 'your ward')

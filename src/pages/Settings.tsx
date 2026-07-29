@@ -31,6 +31,7 @@ export default function Settings() {
   const [confirmFresh, setConfirmFresh] = useState(false)
   const [confirmDemo, setConfirmDemo] = useState(false)
   const [report, setReport] = useState<ImportReport | null>(null)
+  const [busy, setBusy] = useState(false)
 
   /* ---------------- students spreadsheet ---------------- */
 
@@ -62,13 +63,18 @@ export default function Settings() {
 
   /* ---------------- full backup ---------------- */
 
-  const backup = () => {
-    downloadText(
-      `matchpoint-backup-${todayISO()}.json`,
-      exportJSON(),
-      'application/json',
-    )
-    toast('Backup downloaded.')
+  const backup = async () => {
+    setBusy(true)
+    try {
+      downloadText(
+        `matchpoint-backup-${todayISO()}.json`,
+        await exportJSON(),
+        'application/json',
+      )
+      toast('Backup downloaded — screenshots included.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const onBackupFile = (e: ChangeEvent<HTMLInputElement>) => {
@@ -193,8 +199,8 @@ export default function Settings() {
         </div>
 
         <div className="row gap-8">
-          <button className="btn btn--primary grow" onClick={backup}>
-            <IconDownload size={16} /> Backup
+          <button className="btn btn--primary grow" onClick={backup} disabled={busy}>
+            <IconDownload size={16} /> {busy ? 'Packing…' : 'Backup'}
           </button>
           <button className="btn grow" onClick={() => backupRef.current?.click()}>
             <IconUpload size={16} /> Restore

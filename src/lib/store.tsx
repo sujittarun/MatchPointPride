@@ -11,6 +11,7 @@ import {
 import type { AppData, Settings } from './types'
 import { buildEmptyData, buildSeedData, DEFAULT_SETTINGS } from './seed'
 import { applyFeePlan, isFeePlanEmpty, planFeeReminders } from './selectors'
+import { allImages, putRaw } from './images'
 
 const KEY = 'mpp.data.v1'
 const AUTH_KEY = 'mpp.auth.v1'
@@ -160,7 +161,7 @@ interface Ctx {
   resetToDemo: () => void
   startFresh: () => void
   importJSON: (json: string) => { ok: boolean; message: string }
-  exportJSON: () => string
+  exportJSON: () => Promise<string>
   authed: boolean
   login: (code: string) => boolean
   logout: () => void
@@ -248,7 +249,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const resetToDemo = useCallback(() => setData(buildSeedData()), [])
   const startFresh = useCallback(() => setData(buildEmptyData()), [])
 
-  const exportJSON = useCallback(() => JSON.stringify(data, null, 2), [data])
+  /* Screenshots live in IndexedDB, so a backup of the JSON alone would
+     silently drop the payment evidence. They ride along under `images`. */
+  const exportJSON = useCallback(
+    async () => JSON.stringify({ ...data, images: await allImages() }, null, 2),
+    [data],
+  )
 
   const importJSON = useCallback((json: string) => {
     try {
@@ -256,6 +262,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.batches)) {
         return { ok: false, message: 'That file is not a Match Point Pride backup.' }
       }
+      const images = (parsed as AppData & { images?: Record<string, string> }).images
+      if (images) {
+        for (const [id, dataUrl] of Object.entries(images)) void putRaw(id, dataUrl)
+      }
+      delete (parsed as AppData & { images?: unknown }).images
       setData(normalise(parsed))
       return { ok: true, message: 'Backup restored.' }
     } catch {

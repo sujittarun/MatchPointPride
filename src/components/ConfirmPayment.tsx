@@ -1,0 +1,368 @@
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { createPortal } from 'react-dom'
+import { useStore } from '../lib/store'
+import type { Reminder } from '../lib/types'
+import { currentMonthKey, inr, monthLabel, todayISO, uid } from '../lib/format'
+import { batchById, monthsPhrase, studentById } from '../lib/selectors'
+import { getImage, putImage } from '../lib/images'
+import { Sheet } from './ui'
+import {
+  IconAlert,
+  IconCheck,
+  IconPhone,
+  IconTrash,
+  IconUpload,
+  IconX,
+} from './icons'
+
+/* ------------------------------------------------------------------
+   Renders a stored screenshot. Images live in IndexedDB, so this
+   loads asynchronously and holds nothing in the JSON document.
+   ------------------------------------------------------------------ */
+
+export function ProofImage({ id, height = 150 }: { id: string; height?: number }) {
+  const [src, setSrc] = useState<string | null>(null)
+  const [missing, setMissing] = useState(false)
+  const [full, setFull] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    getImage(id).then((v) => {
+      if (!alive) return
+      if (v) setSrc(v)
+      else setMissing(true)
+    })
+    return () => {
+      alive = false
+    }
+  }, [id])
+
+  if (missing) {
+    return (
+      <div className="t-mut" style={{ padding: '10px 0' }}>
+        Screenshot not found on this device.
+      </div>
+    )
+  }
+  if (!src) {
+    return (
+      <div
+        style={{
+          height,
+          borderRadius: 'var(--r-md)',
+          background: 'var(--surface-2)',
+          border: '1px solid var(--line)',
+        }}
+      />
+    )
+  }
+  return (
+    <>
+      <img
+        src={src}
+        alt="Payment screenshot"
+        onClick={() => setFull(true)}
+        style={{
+          width: '100%',
+          maxHeight: height,
+          objectFit: 'cover',
+          objectPosition: 'top',
+          borderRadius: 'var(--r-md)',
+          border: '1px solid var(--line-strong)',
+          display: 'block',
+          cursor: 'zoom-in',
+        }}
+      />
+      {/* A cropped thumbnail is no use for checking a UPI reference —
+          tapping shows the whole receipt. */}
+      {full &&
+        createPortal(
+          <div
+            onClick={() => setFull(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 300,
+              background: 'rgba(4,6,9,0.94)',
+              display: 'grid',
+              placeItems: 'center',
+              padding: 16,
+              cursor: 'zoom-out',
+            }}
+          >
+            <img
+              src={src}
+              alt="Payment screenshot"
+              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }}
+            />
+            <button
+              className="btn btn--icon"
+              onClick={() => setFull(false)}
+              aria-label="Close"
+              style={{ position: 'fixed', top: 'max(14px, env(safe-area-inset-top))', right: 14 }}
+            >
+              <IconX size={20} />
+            </button>
+          </div>,
+          document.body,
+        )}
+    </>
+  )
+}
+
+/* ------------------------------------------------------------------
+   Confirming a payment
+
+   Confirming without evidence is how money quietly goes missing, so
+   the sheet will not let you finish until there is either a
+   screenshot or an explicit statement of how else it was checked.
+   ------------------------------------------------------------------ */
+
+type Method = 'bank' | 'call' | 'cash'
+
+const METHODS: Array<{ value: Method; label: string; detail: string }> = [
+  { value: 'bank', label: 'Seen in the bank statement', detail: 'Checked the account myself' },
+  { value: 'call', label: 'Confirmed on a call', detail: 'Spoke to the parent' },
+  { value: 'cash', label: 'Paid in cash', detail: 'Handed over at the court' },
+]
+
+export function ConfirmPayment({
+  reminder,
+  onClose,
+}: {
+  reminder: Reminder | null
+  onClose: () => void
+}) {
+  const { data, update, toast } = useStore()
+  const fileRef = useRef<HTMLInputElement | null>(null)
+
+  const [imageId, setImageId] = useState<string | null>(null)
+  const [method, setMethod] = useState<Method | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [key, setKey] = useState<string | null>(null)
+
+  const openKey = reminder?.id ?? null
+  if (openKey !== key) {
+    setKey(openKey)
+    setImageId(null)
+    setMethod(null)
+    setBusy(false)
+  }
+
+  if (!reminder) return null
+
+  const student = studentById(data, reminder.studentId)
+  const batch = batchById(data, student?.batchId)
+  const months = reminder.months?.length ? reminder.months : [currentMonthKey()]
+  const perMonth = student?.monthlyFee ?? Math.round((reminder.amount ?? 0) / months.length)
+
+  const attach = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setBusy(true)
+    try {
+      const id = await putImage(file)
+      setImageId(id)
+      setMethod(null)
+    } catch {
+      toast('Could not read that image. Try another one.', 'bad')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const evidenced = imageId !== null || method !== null
+
+  const confirm = () => {
+    const now = new Date().toISOString()
+    update((d) => {
+      const r = d.reminders.find((x) => x.id === reminder.id)
+      if (r) {
+        r.status = 'paid'
+        r.awaitingProof = false
+        if (imageId) r.proofImageId = imageId
+        r.history.push({
+          at: now,
+          action: 'paid',
+          imageId: imageId ?? undefined,
+          note: imageId
+            ? months.length > 1
+              ? `Screenshot received · cleared ${months.length} months`
+              : 'Screenshot received'
+            : METHODS.find((m) => m.value === method)?.label,
+        })
+      }
+      for (const m of months) {
+        d.transactions.unshift({
+          id: uid('txn'),
+          type: 'revenue',
+          date: todayISO(),
+          forMonth: m,
+          amount: perMonth,
+          category: 'Student Fee',
+          source: 'student_fee',
+          studentId: reminder.studentId,
+          batchId: student?.batchId,
+          note: `${batch?.name ?? ''} — ${monthLabel(m)}`.trim(),
+          proofImageId: imageId ?? undefined,
+          verifiedBy: imageId ? 'screenshot' : (method ?? undefined),
+          createdAt: now,
+        })
+      }
+    })
+    toast(
+      months.length > 1
+        ? `${months.length} months cleared and added to Finance.`
+        : 'Payment confirmed and added to Finance.',
+    )
+    onClose()
+  }
+
+  /* Parent says they've paid but nothing has arrived — keep it open and
+     flag it, rather than either confirming blind or losing the claim. */
+  const awaitProof = () => {
+    update((d) => {
+      const r = d.reminders.find((x) => x.id === reminder.id)
+      if (!r) return
+      r.awaitingProof = true
+      r.history.push({
+        at: new Date().toISOString(),
+        action: 'claimed',
+        note: 'Parent says paid — screenshot not received yet',
+      })
+    })
+    toast('Marked as awaiting proof. It stays in the open list.')
+    onClose()
+  }
+
+  return (
+    <Sheet
+      open
+      onClose={onClose}
+      title="Confirm payment"
+      subtitle={`${student?.name ?? 'Student'} · ${monthsPhrase(reminder.months)} · ${inr(
+        reminder.amount ?? 0,
+      )}`}
+      footer={
+        <>
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn btn--primary" onClick={confirm} disabled={!evidenced || busy}>
+            <IconCheck size={16} /> Confirm
+          </button>
+        </>
+      }
+    >
+      {/* ---------- screenshot ---------- */}
+      <div className="t-label" style={{ marginBottom: 8 }}>
+        Payment screenshot
+      </div>
+
+      {imageId ? (
+        <div style={{ marginBottom: 14 }}>
+          <ProofImage id={imageId} height={190} />
+          <button
+            className="btn btn--sm btn--danger btn--block"
+            style={{ marginTop: 8 }}
+            onClick={() => setImageId(null)}
+          >
+            <IconTrash size={14} /> Remove
+          </button>
+        </div>
+      ) : (
+        <button
+          className="btn btn--block"
+          style={{ marginBottom: 14, minHeight: 88, flexDirection: 'column', gap: 6 }}
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+        >
+          <IconUpload size={20} />
+          {busy ? 'Reading image…' : 'Attach the screenshot the parent sent'}
+        </button>
+      )}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        onChange={attach}
+        style={{ display: 'none' }}
+      />
+
+      {/* ---------- no screenshot: verify another way ---------- */}
+      {!imageId && (
+        <>
+          <div
+            className="row gap-10"
+            style={{
+              padding: 12,
+              borderRadius: 'var(--r-md)',
+              background: 'rgba(250,178,25,0.07)',
+              border: '1px solid rgba(250,178,25,0.22)',
+              alignItems: 'flex-start',
+              marginBottom: 14,
+            }}
+          >
+            <IconAlert size={17} style={{ color: '#ffd166', flexShrink: 0, marginTop: 1 }} />
+            <p className="t-mut" style={{ lineHeight: 1.5 }}>
+              No screenshot attached. Check the bank statement or call the parent before
+              confirming — once confirmed this counts as revenue and the dues clear.
+            </p>
+          </div>
+
+          <div className="t-label" style={{ marginBottom: 8 }}>
+            Or confirm how you checked it
+          </div>
+          <div className="col gap-8" style={{ marginBottom: 14 }}>
+            {METHODS.map((m) => (
+              <button
+                key={m.value}
+                className="listrow tap"
+                onClick={() => setMethod(method === m.value ? null : m.value)}
+                style={{
+                  cursor: 'pointer',
+                  borderColor: method === m.value ? 'var(--brand)' : 'var(--line)',
+                  background: method === m.value ? 'var(--brand-wash)' : 'var(--surface-1)',
+                }}
+              >
+                <span
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 99,
+                    flexShrink: 0,
+                    display: 'grid',
+                    placeItems: 'center',
+                    border: `2px solid ${method === m.value ? 'var(--brand)' : 'var(--line-strong)'}`,
+                    background: method === m.value ? 'var(--brand)' : 'transparent',
+                    color: 'var(--brand-ink)',
+                  }}
+                >
+                  {method === m.value && <IconCheck size={12} strokeWidth={3} />}
+                </span>
+                <div className="listrow__main">
+                  <div className="listrow__title" style={{ fontSize: '0.86rem' }}>
+                    {m.label}
+                  </div>
+                  <div className="listrow__meta">{m.detail}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          <div className="row gap-8">
+            {student?.phone && (
+              <a className="btn btn--sm grow" href={`tel:${student.phone}`}>
+                <IconPhone size={14} /> Call parent
+              </a>
+            )}
+            <button className="btn btn--sm grow" onClick={awaitProof}>
+              Ask for screenshot
+            </button>
+          </div>
+        </>
+      )}
+    </Sheet>
+  )
+}

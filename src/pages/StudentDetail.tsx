@@ -8,6 +8,7 @@ import {
   inr,
   initials,
   monthLabel,
+  monthShort,
   ordinal,
 } from '../lib/format'
 import { monthsPhrase, studentProfile } from '../lib/selectors'
@@ -15,14 +16,12 @@ import { Confirm, Empty, Stat } from '../components/ui'
 import { seriesColor } from '../components/charts'
 import { StudentSheet } from '../components/StudentSheet'
 import {
-  IconCheck,
   IconChevronLeft,
   IconClock,
   IconPencil,
   IconTrash,
   IconUsers,
   IconWhatsApp,
-  IconX,
 } from '../components/icons'
 
 export default function StudentDetail({ id }: { id: string }) {
@@ -50,6 +49,9 @@ export default function StudentDetail({ id }: { id: string }) {
   const { student: s, batch } = p
   const color = batch ? seriesColor(batch.colorSlot) : 'var(--series-1)'
   const months = Math.floor(p.tenureDays / 30.44)
+  const billable = p.ledger.filter((r) => r.enrolled)
+  const billableCount = billable.length
+  const paidCount = billable.filter((r) => r.paid).length
 
   return (
     <main className="page">
@@ -195,46 +197,74 @@ export default function StudentDetail({ id }: { id: string }) {
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="card__head">
           <div>
-            <div className="card__title">Month by month</div>
+            <div className="card__title">Fees, month by month</div>
             <div className="card__sub">
-              {p.ledgerTruncated ? 'Last 12 months' : 'Since they joined'} · dues are chased
-              for 6 months
+              {paidCount} of {billableCount} months paid
+              {p.ledgerTruncated ? ' · last 12 months' : ' since joining'}
             </div>
           </div>
         </div>
-        <div className="col gap-6">
-          {p.ledger.map((row) => (
-            <div
-              key={row.month}
-              className="row-between"
-              style={{
-                padding: '9px 11px',
-                borderRadius: 'var(--r-sm)',
-                background: row.enrolled ? 'var(--surface-2)' : 'transparent',
-                border: row.enrolled ? '1px solid var(--line)' : '1px dashed var(--line)',
-                opacity: row.enrolled ? 1 : 0.55,
-              }}
-            >
-              <span style={{ fontSize: '0.855rem', fontWeight: 540 }}>
-                {monthLabel(row.month)}
-              </span>
-              {!row.enrolled ? (
-                <span className="badge badge--mute">Away</span>
-              ) : row.paid ? (
-                <span className="badge badge--good">
-                  <IconCheck size={11} /> {inr(row.amount)}
-                </span>
-              ) : row.chased ? (
-                <span className="badge badge--crit">
-                  <IconX size={11} /> Unpaid
-                </span>
-              ) : (
-                /* Outside the 6-month window: no payment on record, but the
-                   academy isn't chasing it — don't dress it up as a debt. */
-                <span className="badge badge--mute">No record</span>
-              )}
-            </div>
-          ))}
+
+        {/* A grid rather than a list: two years fit in six short rows, and
+            the pattern of a payer is readable at a glance. */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+            gap: 6,
+          }}
+        >
+          {[...p.ledger].reverse().map((row) => {
+            const look = !row.enrolled
+              ? { bg: 'transparent', fg: 'var(--ink-muted)', bd: '1px dashed var(--line)' }
+              : row.paid
+                ? { bg: 'rgba(12,163,12,0.16)', fg: '#6ee36e', bd: '1px solid rgba(12,163,12,0.3)' }
+                : row.chased
+                  ? { bg: 'rgba(208,59,59,0.16)', fg: '#ff8f8f', bd: '1px solid rgba(208,59,59,0.32)' }
+                  : { bg: 'var(--surface-2)', fg: 'var(--ink-muted)', bd: '1px solid var(--line)' }
+            return (
+              <div
+                key={row.month}
+                title={`${monthLabel(row.month)} — ${
+                  !row.enrolled ? 'away' : row.paid ? inr(row.amount) : row.chased ? 'unpaid' : 'no record'
+                }`}
+                style={{
+                  background: look.bg,
+                  border: look.bd,
+                  borderRadius: 'var(--r-sm)',
+                  padding: '9px 4px 8px',
+                  textAlign: 'center',
+                  minHeight: 56,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  gap: 2,
+                }}
+              >
+                <div style={{ fontSize: '0.75rem', fontWeight: 640, color: look.fg }}>
+                  {monthShort(row.month)}
+                </div>
+                <div style={{ fontSize: '0.6rem', color: 'var(--ink-muted)' }}>
+                  {row.month.slice(2, 4)}
+                </div>
+                <div style={{ fontSize: '0.62rem', fontWeight: 620, color: look.fg }}>
+                  {!row.enrolled ? '—' : row.paid ? '✓' : row.chased ? 'due' : '·'}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="chart__legend" style={{ marginTop: 12 }}>
+          <span className="legend-item">
+            <span className="legend-swatch" style={{ background: '#6ee36e' }} /> Paid
+          </span>
+          <span className="legend-item">
+            <span className="legend-swatch" style={{ background: '#ff8f8f' }} /> Unpaid
+          </span>
+          <span className="legend-item">
+            <span className="legend-swatch" style={{ background: 'var(--ink-muted)' }} /> Away
+          </span>
         </div>
       </div>
 

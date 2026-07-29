@@ -39,6 +39,15 @@ export const ACADEMY = {
   /** Placeholders: {student} {guardian} {amount} {months} {due} {batch} {slot} {academy} {owner} */
   reminderTemplate:
     'Hi {guardian}, a gentle reminder from {academy}. ' +
-    "{student}'s {batch} fee for {months} comes to {amount}. " +
-    'Please ignore if already paid. — {owner}',
+    "{student}'s {batch} fee for {months} comes to {amount}.",
+
+  /**
+   * Appended only when the student's batch has a UPI ID, so a batch without
+   * one never sends a half-finished "pay to:" line. {upi} and {payee} come
+   * from the batch.
+   */
+  upiLine: 'You can pay by UPI to {upi}{payee}. Please send a screenshot once done.',
+
+  /** Always last. */
+  reminderSignoff: 'Please ignore if already paid. — {owner}',
 } as const

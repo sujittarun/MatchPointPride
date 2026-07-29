@@ -68,31 +68,37 @@ function makeBatches(): Batch[] {
     {
       id: 'batch_k1', name: 'Kids Batch A', kind: 'kids', slot: '4:30 PM – 5:30 PM',
       days: weekdays, fee: 2000, capacity: 12, colorSlot: 1, createdAt: now,
+      upiId: 'matchpointkids@ybl', upiName: 'Match Point Pride',
       note: 'Beginners, ages 6–9.',
     },
     {
       id: 'batch_k2', name: 'Kids Batch B', kind: 'kids', slot: '5:30 PM – 6:30 PM',
       days: weekdays, fee: 2000, capacity: 12, colorSlot: 2, createdAt: now,
+      upiId: 'matchpointkids@ybl', upiName: 'Match Point Pride',
       note: 'Intermediate, ages 9–12.',
     },
     {
       id: 'batch_k3', name: 'Kids Batch C', kind: 'kids', slot: '6:30 PM – 7:30 PM',
       days: weekdays, fee: 2200, capacity: 12, colorSlot: 3, createdAt: now,
+      upiId: 'matchpointkids@ybl', upiName: 'Match Point Pride',
       note: 'Advanced juniors.',
     },
     {
       id: 'batch_k4', name: 'Kids Batch D', kind: 'kids', slot: '6:30 AM – 7:30 AM',
       days: all, fee: 2200, capacity: 12, colorSlot: 4, createdAt: now,
+      upiId: 'matchpointkids@ybl', upiName: 'Match Point Pride',
       note: 'Morning batch.',
     },
     {
       id: 'batch_pro', name: 'Professional Squad', kind: 'professional', slot: '5:30 AM – 8:00 AM',
       days: all, fee: 6000, capacity: 10, colorSlot: 5, createdAt: now,
+      upiId: 'mppro@okaxis', upiName: 'MPP Academy',
       note: 'Tournament players. Fitness + court work.',
     },
     {
       id: 'batch_mem', name: 'Membership', kind: 'membership', fee: 1500,
       capacity: 40, colorSlot: 6, createdAt: now,
+      upiId: 'mppcourts@okhdfcbank', upiName: 'MPP Courts',
       note: 'Open play. No fixed slot — members book courts as needed.',
     },
   ]
@@ -108,7 +114,7 @@ function makeStudents(batches: Batch[], rand: () => number): Student[] {
       batchId: batch.id,
       phone: `9${String(400000000 + Math.floor(rand() * 99999999)).slice(0, 9)}`,
       guardian: batch.kind === 'kids' ? `${name.split(' ')[1] ?? name} family` : undefined,
-      joinedOn: addDays(today, -Math.floor(rand() * 700) - 30),
+      joinedOn: addDays(today, -Math.floor(rand() * 160) - 25),
       monthlyFee: batch.fee,
       feeDueDay: [1, 5, 10, 15][i % 4],
       active: rand() > 0.06,
@@ -179,6 +185,8 @@ function makeTransactions(
     // --- student fees ---
     for (const s of students) {
       if (!s.active) continue
+      // nobody pays for a month before they joined
+      if (m < s.joinedOn.slice(0, 7)) continue
       // the last `owed` months are the ones they haven't settled
       if (mi >= months.length - (behind.get(s.id) ?? 0)) continue
       const date = dueDateFor(m, s.feeDueDay + Math.floor(rand() * 6))

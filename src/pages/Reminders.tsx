@@ -2,12 +2,10 @@ import { useMemo, useState } from 'react'
 import { useStore } from '../lib/store'
 import type { Reminder, ReminderChannel, ReminderStatus } from '../lib/types'
 import {
-  currentMonthKey,
   dateLabelFull,
   dueLabel,
   inr,
   initials,
-  monthLabel,
   monthShort,
   todayISO,
   uid,
@@ -24,8 +22,10 @@ import {
 } from '../lib/selectors'
 import { Confirm, Empty, Field, Sheet, Stat } from '../components/ui'
 import { ACADEMY } from '../lib/academy'
+import { ConfirmPayment, ProofImage } from '../components/ConfirmPayment'
 import { BarChart } from '../components/charts'
 import {
+  IconAlert,
   IconBell,
   IconCheck,
   IconClock,
@@ -234,10 +234,14 @@ function ReminderRow({ reminder, onOpen }: { reminder: Reminder; onOpen: () => v
             {inr(reminder.amount)}
           </span>
         ) : null}
-        <span className={`badge ${overdue && reminder.status !== 'paid' ? 'badge--crit' : STATUS_BADGE[reminder.status]}`}>
-          {overdue && reminder.status !== 'paid' ? 'Overdue' : STATUS_LABEL[reminder.status]}
-          {reminder.sendCount > 1 ? ` ×${reminder.sendCount}` : ''}
-        </span>
+        {reminder.awaitingProof ? (
+          <span className="badge badge--warn">Awaiting proof</span>
+        ) : (
+          <span className={`badge ${overdue && reminder.status !== 'paid' ? 'badge--crit' : STATUS_BADGE[reminder.status]}`}>
+            {overdue && reminder.status !== 'paid' ? 'Overdue' : STATUS_LABEL[reminder.status]}
+            {reminder.sendCount > 1 ? ` ×${reminder.sendCount}` : ''}
+          </span>
+        )}
       </div>
     </button>
   )
@@ -250,6 +254,7 @@ function ReminderRow({ reminder, onOpen }: { reminder: Reminder; onOpen: () => v
 function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onClose: () => void }) {
   const { data, update, toast } = useStore()
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirming, setConfirming] = useState(false)
 
   if (!reminder) return null
   const live = data.reminders.find((r) => r.id === reminder.id) ?? reminder
@@ -289,47 +294,6 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
     logSend(channel)
   }
 
-  /* Settles every month the reminder covers. One payment row per month —
-     all dated today, because that is when the cash arrived, but each
-     tagged with the month it clears so the arrears actually go away. */
-  const markPaid = () => {
-    const months = live.months?.length ? live.months : [currentMonthKey()]
-    const perMonth = student?.monthlyFee ?? Math.round((live.amount ?? 0) / months.length)
-    update((d) => {
-      const r = d.reminders.find((x) => x.id === live.id)
-      if (r) {
-        r.status = 'paid'
-        r.months = []
-        r.history.push({
-          at: new Date().toISOString(),
-          action: 'paid',
-          note: months.length > 1 ? `Cleared ${months.length} months` : undefined,
-        })
-      }
-      for (const m of months) {
-        d.transactions.unshift({
-          id: uid('txn'),
-          type: 'revenue',
-          date: todayISO(),
-          forMonth: m,
-          amount: perMonth,
-          category: 'Student Fee',
-          source: 'student_fee',
-          studentId: live.studentId,
-          batchId: student?.batchId,
-          note: `${batch?.name ?? ''} — ${monthLabel(m)}`.trim(),
-          createdAt: new Date().toISOString(),
-        })
-      }
-    })
-    toast(
-      months.length > 1
-        ? `${months.length} months cleared and added to Finance.`
-        : 'Marked paid and added to Finance.',
-    )
-    onClose()
-  }
-
   const reopen = () => {
     update((d) => {
       const r = d.reminders.find((x) => x.id === live.id)
@@ -361,8 +325,8 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
             </>
           ) : (
             <>
-              <button className="btn" onClick={markPaid}>
-                <IconCheck size={16} /> Mark paid
+              <button className="btn" onClick={() => setConfirming(true)}>
+                <IconCheck size={16} /> Record payment
               </button>
               <button
                 className="btn btn--primary"
@@ -390,6 +354,47 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
             accent="var(--series-1)"
           />
         </div>
+
+        {live.awaitingProof && (
+          <div
+            className="row gap-10"
+            style={{
+              padding: 12,
+              borderRadius: 'var(--r-md)',
+              background: 'rgba(250,178,25,0.08)',
+              border: '1px solid rgba(250,178,25,0.24)',
+              alignItems: 'flex-start',
+              marginBottom: 14,
+            }}
+          >
+            <IconAlert size={17} style={{ color: '#ffd166', flexShrink: 0, marginTop: 1 }} />
+            <div className="grow">
+              <div style={{ fontSize: '0.86rem', fontWeight: 600 }}>Waiting on a screenshot</div>
+              <p className="t-mut" style={{ lineHeight: 1.5, marginTop: 3 }}>
+                The parent says this is paid. Call them back or check the bank statement
+                before confirming it.
+              </p>
+              {student?.phone && (
+                <a
+                  className="btn btn--sm"
+                  style={{ marginTop: 9 }}
+                  href={`tel:${student.phone}`}
+                >
+                  <IconPhone size={14} /> Call back
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
+        {live.proofImageId && (
+          <div className="card card--tight" style={{ marginBottom: 14 }}>
+            <div className="t-label" style={{ marginBottom: 8 }}>
+              Payment screenshot
+            </div>
+            <ProofImage id={live.proofImageId} height={190} />
+          </div>
+        )}
 
         <div className="card card--tight" style={{ marginBottom: 14 }}>
           <div className="t-label" style={{ marginBottom: 7 }}>
@@ -472,11 +477,24 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
                   })}
                 </div>
                 {h.note && <div className="t-mut">{h.note}</div>}
+                {h.imageId && (
+                  <div style={{ marginTop: 8, maxWidth: 220 }}>
+                    <ProofImage id={h.imageId} height={130} />
+                  </div>
+                )}
               </div>
             </div>
           ))}
         </div>
       </Sheet>
+
+      <ConfirmPayment
+        reminder={confirming ? live : null}
+        onClose={() => {
+          setConfirming(false)
+          onClose()
+        }}
+      />
 
       <Confirm
         open={confirmDelete}
