@@ -10,13 +10,14 @@ import {
 import {
   collectionRate, dashboard, expenseByCategory, moneyByMonth, monthTotals,
   renderReminderMessage, reminderStats, revenueBySource, smsLink,
-  staffLifetime, staffMonthStats, workingDays, whatsappLink,
+  staffLifetime, staffMonthStats, workingDays, whatsappLink, tenureDays, wasEnrolledIn, studentProfile,
   monthsPhrase, paidForMonth, unpaidMonthsFor,
   findExisting, phoneKey, sameName, needsACall, blockedReminders, awaitingFirstPayment,
 } from '../src/lib/selectors'
-import { toStudents } from '../src/lib/mapping'
-import type { EnrollmentRow, MemberRow } from '../src/lib/cloud'
+import { assemble, toStudents } from '../src/lib/mapping'
+import type { BatchRow, EnrollmentRow, MemberRow } from '../src/lib/cloud'
 import { buildEmptyData, buildSeedData } from '../src/lib/seed'
+import * as vault from '../src/lib/vault'
 import type { AppData } from '../src/lib/types'
 
 let pass = 0
@@ -406,6 +407,74 @@ const twoLive = toStudents(
 )
 eq('two live enrolments: the earlier one wins, not the last read', twoLive[0].enrollmentId, 10)
 
+/* -------- a student nobody dated ---------------------------------------
+   `enrollments.joined_on` and `members.joined` are both nullable, so
+   mapping can hand back a spell with `from: ''`. An empty string sorts
+   before every real date, which used to mean "on the roll since the
+   beginning of time": 46,232 days of tenure — a hundred and twenty-six
+   years — and twelve months of arrears invented out of a missing field.
+
+   Not knowing when someone joined is not knowing they joined long ago.
+   An undated spell now covers no month and contributes no tenure. ---- */
+const undated = toStudents(
+  [member({ joined: null })],
+  [enrol({ joined_on: null, renewal_on: null })],
+  { 5: 2000 },
+)
+eq('undated: still a student, not dropped', undated.length, 1)
+eq('undated: the missing date is not invented', undated[0].joinedOn, '')
+eq('undated: tenure is zero, not a century', tenureDays(undated[0], '2026-07-31'), 0)
+eq('undated: covers no month at all', wasEnrolledIn(undated[0], '2026-07'), false)
+eq('undated: and no month long ago either', wasEnrolledIn(undated[0], '2020-01'), false)
+
+{
+  const d: AppData = JSON.parse(JSON.stringify(buildEmptyData()))
+  d.students = JSON.parse(JSON.stringify(undated))
+  eq('undated: no arrears are fabricated', unpaidMonthsFor(d, d.students[0]), [])
+  const prof = studentProfile(d, d.students[0].id)
+  eq('undated: the ledger is one row, not a year of blanks', prof?.ledger.length, 1)
+  eq('undated: nothing in it reads as enrolled', prof?.ledger.every((r) => !r.enrolled), true)
+  ok('undated: the ledger is not marked truncated', prof?.ledgerTruncated === false)
+}
+
+/* A member dated but with a null renewal still bills on the 1st, which
+   is the documented fallback rather than an accident. */
+eq('null renewal_on falls back to the 1st',
+   toStudents([member()], [enrol({ renewal_on: null })], { 5: 2000 })[0].feeDueDay, 1)
+
+/* An enrolment with no date of its own falls back to the member's
+   joining date before it falls back to nothing — so `''` only happens
+   when BOTH are null. Worth pinning: it is why the undated case above
+   has to null the member row too, and it is the reason a missing
+   `joined_on` is usually harmless. */
+const memberDated = toStudents(
+  [member({ joined: '2025-06-01' })],
+  [enrol({ joined_on: null })],
+  { 5: 2000 },
+)
+eq('an enrolment with no date borrows the member\'s',
+   memberDated[0].spells?.[0].from, '2025-06-01')
+eq('...and that date is the joining date', memberDated[0].joinedOn, '2025-06-01')
+
+/* One dated spell and one undated: the dated one must still count, and
+   the undated one must not drag the history back to the epoch. */
+const halfDated = toStudents(
+  [member({ joined: null })],
+  [
+    enrol({ id: 10, joined_on: null, status: 'discontinued', discontinued_on: '2026-03-01' }),
+    enrol({ id: 11, joined_on: '2026-06-01', status: 'active' }),
+  ],
+  { 5: 2000 },
+)
+eq('half-dated: both spells kept', halfDated[0].spells?.length, 2)
+eq('half-dated: the undated one is the empty one', halfDated[0].spells?.[0].from, '')
+eq('half-dated: the dated spell still covers its month',
+   wasEnrolledIn(halfDated[0], '2026-07'), true)
+eq('half-dated: ...but the undated one covers nothing before it',
+   wasEnrolledIn(halfDated[0], '2020-01'), false)
+eq('half-dated: tenure counts only the dated one',
+   tenureDays(halfDated[0], '2026-07-01'), 30)
+
 /* ================= the next date a fee falls due =================
    This is what a new student's renewal_on is set to, and what the
    reminder ladder counts days from. It got two things wrong at once:
@@ -782,10 +851,264 @@ ok('every future start agrees, whichever screen set it', (() => {
 })())
 
 
-/* ================= report ================= */
-console.log(`\n  PASS ${pass}   FAIL ${fails.length}\n`)
-if (fails.length) {
-  console.log('  FAILURES:')
-  for (const f of fails) console.log('   ✗ ' + f)
-  process.exit(1)
+/* ================= the whole document, assembled ====================
+   `assemble()` is what StoreProvider actually hands every page: ten
+   arrays of database rows in, one AppData out. Nothing tested it, and
+   it is the seam where a change to one row type becomes a blank screen.
+
+   It reshapes and nothing more — every number in here was decided by
+   Postgres. The assertions are about SHAPE and JOINS, because deciding
+   is not this file's job. ------------------------------------------ */
+{
+  const batches: BatchRow[] = [
+    { id: 5, centre_id: 1, code: 'K1', name: 'Kids 6-9 AM', sport: 'badminton',
+      days: [1, 3, 5], start_time: '06:00:00', end_time: '07:00:00', capacity: 12, active: true },
+    { id: 6, centre_id: 1, code: 'M1', name: 'Membership', sport: 'badminton',
+      days: null, start_time: null, end_time: null, capacity: null, active: true },
+  ]
+  const members: MemberRow[] = [
+    { id: 1, name: 'Aarav Sharma', phone: null, parent_name: 'Sunita',
+      parent_phone: '+91 98765 43210', joined: '2026-01-05', status: 'active', notes: null },
+    { id: 2, name: 'Diya Rao', phone: '9000000002', parent_name: null,
+      parent_phone: null, joined: '2026-02-01', status: 'active', notes: 'left-handed' },
+    // A member with no enrolment is not a student yet.
+    { id: 3, name: 'Not Enrolled', phone: '9000000003', parent_name: null,
+      parent_phone: null, joined: '2026-03-01', status: 'active', notes: null },
+  ]
+  const enrolments: EnrollmentRow[] = [
+    { id: 10, member_id: 1, centre_id: 1, batch_id: 5, sport: 'badminton', plan_months: 1,
+      custom_amount: null, joined_on: '2026-01-05', renewal_on: '2026-08-05',
+      status: 'active', discontinued_on: null },
+    { id: 11, member_id: 2, centre_id: 1, batch_id: 6, sport: 'badminton', plan_months: 1,
+      custom_amount: 3500, joined_on: '2026-02-01', renewal_on: '2026-08-15',
+      status: 'active', discontinued_on: null },
+  ]
+  const doc = assemble({
+    batches,
+    fees: { 5: 2000, 6: 4000 },
+    upi: { '5': { upi: '7732077327@ybl', payee: 'Match Point Badminton Academy' } },
+    members,
+    enrolments,
+    coaches: [{ id: 1, name: 'Coach R', role: 'coach', phone: '9000000009', active: true }],
+    payments: [
+      { id: 100, member_id: 1, enrollment_id: 10, type: 'revenue', kind: 'student_fee',
+        amount: 2000, mode: 'upi', on_date: '2026-07-05', period_from: '2026-07-01',
+        period_to: '2026-07-31', status: 'confirmed', ref: null, note: null, proof_path: null },
+    ],
+    expenses: [{ id: 200, category: 'rent', payee: 'Landlord', detail: null,
+                 amount: 15000, mode: 'bank', on_date: '2026-07-01' }],
+    // 'staff' is the kind cloud.ts writes; anything else is another
+    // module's attendance and is not this app's to render.
+    attendance: [
+      { date: '2026-07-28', kind: 'staff', person_id: '1', present: true },
+      { date: '2026-07-28', kind: 'student', person_id: '1', present: true },
+    ],
+    due: [
+      { enrollment_id: 10, member_id: 1, member_name: 'Aarav Sharma', parent_name: 'Sunita',
+        phone: '9876543210', centre: 'Pride', batch: 'Kids 6-9 AM', sport: 'badminton',
+        due_date: '2026-08-05', days_since: 0, stage: 'due', amount: 2000, months: 1 },
+    ],
+  })
+
+  eq('assemble: two students, the un-enrolled member skipped', doc.students.length, 2)
+  eq('assemble: both batches kept', doc.batches.length, 2)
+  eq('assemble: the batch fee came from resolve_fee, not arithmetic',
+     doc.students.find((x) => x.name === 'Aarav Sharma')?.monthlyFee, 2000)
+  eq('assemble: an enrolment override beats the batch fee',
+     doc.students.find((x) => x.name === 'Diya Rao')?.monthlyFee, 3500)
+  /* The parent's number wins over the student's, punctuation and all
+     stripped. The +91 is KEPT rather than normalised away, which is
+     safe in both directions: `phoneKey` matches on the last ten digits,
+     and `whatsappLink` only prepends a country code to a number that
+     does not already carry one. */
+  const aarav = doc.students.find((x) => x.name === 'Aarav Sharma')!
+  eq('assemble: the parent phone wins, digits only', aarav.phone, '919876543210')
+  eq('assemble: ...and still matches the bare ten digits',
+     phoneKey(aarav.phone), phoneKey('98765 43210'))
+  ok('assemble: ...and does not get a second country code',
+     whatsappLink('91', aarav.phone, 'hi').startsWith('https://wa.me/919876543210?'))
+  eq('assemble: the student\'s own number is used when there is no parent',
+     doc.students.find((x) => x.name === 'Diya Rao')?.phone, '9000000002')
+  eq('assemble: the fee day comes off renewal_on',
+     doc.students.find((x) => x.name === 'Aarav Sharma')?.feeDueDay, 5)
+  eq('assemble: one reminder, from reminder_queue', doc.reminders.length, 1)
+  eq('assemble: the reminder is joined to its student',
+     doc.reminders[0].studentId, doc.students.find((x) => x.name === 'Aarav Sharma')?.id)
+  eq('assemble: the amount is the queue\'s, untouched', doc.reminders[0].amount, 2000)
+  eq('assemble: revenue and expense both land', doc.transactions.length, 2)
+  eq('assemble: one coach', doc.staff.length, 1)
+  eq('assemble: staff attendance carried, student attendance not', doc.attendance.length, 1)
+  eq('assemble: ...and it reads as present', doc.attendance[0].status, 'present')
+  ok('assemble: no settings document is produced',
+     !Object.prototype.hasOwnProperty.call(doc, 'settings'))
+
+  /* The empty tenant: a brand new academy, nothing entered yet. Every
+     page has to render this without a crash — it is what the owner sees
+     for the first minute after signing in. */
+  const blank = assemble({
+    batches: [], fees: {}, upi: {}, members: [], enrolments: [], coaches: [],
+    payments: [], expenses: [], attendance: [], due: [],
+  })
+  eq('assemble: an empty tenant is empty, not undefined',
+     [blank.students.length, blank.batches.length, blank.reminders.length,
+      blank.staff.length, blank.transactions.length, blank.attendance.length],
+     [0, 0, 0, 0, 0, 0])
+  const blankDash = dashboard(blank)
+  eq('assemble: dashboard survives an empty tenant', blankDash.activeStudents, 0)
+  eq('assemble: ...with nothing overdue', blankDash.overdue, 0)
+  finite('assemble: ...and a finite net', blankDash.net)
+  eq('assemble: collection rate on nobody is 0, not NaN',
+     collectionRate(blank, currentMonthKey()).rate, 0)
+  finite('assemble: reminder stats on nothing', reminderStats(blank).responseRate)
 }
+
+/* ================= the session vault =================================
+
+   These run for real: Node has WebCrypto, so `enrol`, `unlock` and
+   `changePin` do the actual 600k-iteration PBKDF2 and the actual AES-GCM
+   seal. Only `localStorage` is missing, and it is a Map with four
+   methods, so shimming it tests the module rather than replacing it.
+
+   This is the code that shipped a silent success — "PIN updated." over a
+   vault that had not changed — so the assertions that matter are the
+   negative ones: after any operation, does the PIN that should NOT work
+   actually fail to open it? ------------------------------------------ */
+
+/** The salt currently on disk, so a change of it can be asserted. */
+function sealSalt(): string {
+  return JSON.parse(localStorage.getItem('mpp.vault.v1') ?? '{}').salt ?? ''
+}
+
+function installLocalStorage(): void {
+  const m = new Map<string, string>()
+  ;(globalThis as any).localStorage = {
+    getItem: (k: string) => (m.has(k) ? m.get(k)! : null),
+    setItem: (k: string, v: string) => void m.set(k, String(v)),
+    removeItem: (k: string) => void m.delete(k),
+    clear: () => m.clear(),
+  }
+}
+
+async function vaultScenarios(): Promise<void> {
+  installLocalStorage()
+
+  const TOKEN = 'refresh-token-aaaa.bbbb.cccc'
+  const EMAIL = 'staff@matchpointpride.in'
+
+  /* --- the ordinary day: enrol once, unlock every morning ----------- */
+  localStorage.clear()
+  ok('vault: nothing enrolled to begin with', vault.isEnrolled() === false)
+  eq('vault: no email before enrolment', vault.enrolledEmail(), null)
+
+  await vault.enrol({ pin: '4417', refreshToken: TOKEN, email: EMAIL })
+  ok('vault: enrolled', vault.isEnrolled() === true)
+  eq('vault: remembers the account', vault.enrolledEmail(), EMAIL)
+  eq('vault: remembers 4 digits', vault.pinLength(), 4)
+  eq('vault: the right PIN returns the token', await vault.unlock('4417'), TOKEN)
+  eq('vault: a wrong PIN returns null', await vault.unlock('4418'), null)
+  eq('vault: a shorter PIN returns null', await vault.unlock('441'), null)
+  eq('vault: an empty PIN returns null', await vault.unlock(''), null)
+
+  /* The token is never stored in the clear. If it were, the PIN would be
+     decoration on a plaintext credential sitting in localStorage. */
+  ok('vault: the raw token is nowhere in storage',
+     !(localStorage.getItem('mpp.vault.v1') ?? '').includes(TOKEN))
+
+  /* --- rotation: Supabase spends the token on every use ------------- */
+  const ROTATED = 'refresh-token-dddd.eeee.ffff'
+  await vault.reseal('4417', ROTATED)
+  eq('vault: reseal stores the new token', await vault.unlock('4417'), ROTATED)
+  eq('vault: reseal keeps the same PIN', await vault.unlock('4418'), null)
+  eq('vault: reseal keeps the length', vault.pinLength(), 4)
+  eq('vault: reseal keeps the account', vault.enrolledEmail(), EMAIL)
+
+  /* --- changing the PIN: the bug this file exists for --------------- */
+  const saltBeforeChange = sealSalt()
+  eq('changePin: the right current PIN succeeds', await vault.changePin('4417', '9091'), true)
+  eq('changePin: the NEW pin opens the vault', await vault.unlock('9091'), ROTATED)
+  // The assertion that would have caught the shipped bug. The old code
+  // wrote a field nothing read, so the vault stayed sealed under 4417
+  // and this would have returned the token.
+  eq('changePin: the OLD pin no longer opens it', await vault.unlock('4417'), null)
+  eq('changePin: the account is unchanged', vault.enrolledEmail(), EMAIL)
+  // The other half of going through `enrol`: a new PIN gets a new salt,
+  // so two vaults sealed with the same PIN never share a derived key.
+  ok('changePin: draws a fresh salt', sealSalt() !== saltBeforeChange)
+
+  /* --- a wrong current PIN must change nothing ---------------------- */
+  eq('changePin: a wrong current PIN fails', await vault.changePin('0000', '1234'), false)
+  eq('changePin: ...and the PIN it rejected does not work', await vault.unlock('1234'), null)
+  eq('changePin: ...and the real PIN still does', await vault.unlock('9091'), ROTATED)
+
+  /* --- 4 -> 6 digits, which the old screen could not do at all ------ */
+  eq('changePin: 4 digits to 6 succeeds', await vault.changePin('9091', '246810'), true)
+  eq('changePin: the keypad now draws 6 boxes', vault.pinLength(), 6)
+  eq('changePin: the 6-digit PIN opens it', await vault.unlock('246810'), ROTATED)
+  eq('changePin: the old 4-digit PIN does not', await vault.unlock('9091'), null)
+  // Back down again, so the length genuinely tracks the PIN.
+  eq('changePin: 6 digits back to 4', await vault.changePin('246810', '5566'), true)
+  eq('changePin: the keypad draws 4 again', vault.pinLength(), 4)
+
+  /* Each seal must use a fresh IV. Reusing one under the same key is the
+     classic AES-GCM failure, and it is invisible from the outside — the
+     app works perfectly either way. */
+  const ivs = new Set<string>()
+  for (let i = 0; i < 6; i++) {
+    await vault.reseal('5566', `token-${i}`)
+    ivs.add(JSON.parse(localStorage.getItem('mpp.vault.v1')!).iv)
+  }
+  eq('vault: every reseal draws a fresh IV', ivs.size, 6)
+
+  const salts = new Set<string>()
+  for (let i = 0; i < 4; i++) {
+    localStorage.clear()
+    await vault.enrol({ pin: '4417', refreshToken: TOKEN, email: EMAIL })
+    salts.add(JSON.parse(localStorage.getItem('mpp.vault.v1')!).salt)
+  }
+  eq('vault: every enrolment draws a fresh salt', salts.size, 4)
+
+  /* --- nothing enrolled: every path must decline, not throw --------- */
+  localStorage.clear()
+  eq('vault: unlock with no vault is null', await vault.unlock('4417'), null)
+  eq('vault: changePin with no vault is false', await vault.changePin('4417', '9091'), false)
+  ok('vault: reseal with no vault is a no-op', await vault.reseal('4417', TOKEN) === undefined)
+  ok('vault: still not enrolled', vault.isEnrolled() === false)
+  eq('vault: pinLength falls back to 4', vault.pinLength(), 4)
+
+  /* --- forget(), which the attempt ladder calls past the cap -------- */
+  await vault.enrol({ pin: '4417', refreshToken: TOKEN, email: EMAIL })
+  vault.forget()
+  ok('vault: forget un-enrols', vault.isEnrolled() === false)
+  eq('vault: forget leaves nothing to unlock', await vault.unlock('4417'), null)
+
+  /* --- corrupt storage must deny, not explode ---------------------- */
+  localStorage.setItem('mpp.vault.v1', 'not json at all')
+  ok('vault: unreadable vault reads as not enrolled', vault.isEnrolled() === false)
+  eq('vault: unreadable vault does not unlock', await vault.unlock('4417'), null)
+
+  localStorage.setItem('mpp.vault.v1', JSON.stringify({ v: 1, len: 4, salt: 'x', iv: 'y', blob: '', email: EMAIL }))
+  ok('vault: an empty blob reads as not enrolled', vault.isEnrolled() === false)
+
+  await vault.enrol({ pin: '4417', refreshToken: TOKEN, email: EMAIL })
+  const good = JSON.parse(localStorage.getItem('mpp.vault.v1')!)
+  localStorage.setItem('mpp.vault.v1', JSON.stringify({ ...good, blob: good.blob.slice(0, -4) + 'AAAA' }))
+  eq('vault: a tampered blob fails the tag check', await vault.unlock('4417'), null)
+  eq('vault: ...and changePin refuses it too', await vault.changePin('4417', '9091'), false)
+}
+
+/* ================= report ================= */
+function report(): void {
+  console.log(`\n  PASS ${pass}   FAIL ${fails.length}\n`)
+  if (fails.length) {
+    console.log('  FAILURES:')
+    for (const f of fails) console.log('   ✗ ' + f)
+    process.exit(1)
+  }
+}
+
+/* The synchronous assertions above have already run. The vault is async
+   because WebCrypto is, so the report waits for it. */
+vaultScenarios().then(report, (err) => {
+  console.error('\n  vault scenarios threw:', err)
+  process.exit(1)
+})

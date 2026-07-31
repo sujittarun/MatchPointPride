@@ -328,9 +328,28 @@ export function spellsOf(student: Student): Spell[] {
   return [{ from: student.joinedOn, ...(student.active ? {} : { to: student.joinedOn }) }]
 }
 
+/**
+ * The spells we can actually date.
+ *
+ * `enrollments.joined_on` and `members.joined` are both nullable, and
+ * mapping.ts turns a missing one into `''`. An empty string sorts before
+ * every real date, so an undated spell used to read as "on the roll
+ * since the beginning of time": one such student showed 46,232 days of
+ * tenure — a hundred and twenty-six years — and twelve fabricated months
+ * of arrears on their ledger, none of which corresponded to anything.
+ *
+ * Not knowing when someone joined is not the same as knowing they joined
+ * long ago. An undated spell asserts nothing: it covers no month and
+ * contributes no tenure, the way an unpriced enrolment is `feePending`
+ * rather than ₹0.
+ */
+function datedSpells(student: Student): Spell[] {
+  return spellsOf(student).filter((sp) => sp.from)
+}
+
 /** Was the student on the roll at any point during this month? */
 export function wasEnrolledIn(student: Student, monthKey: string): boolean {
-  return spellsOf(student).some((sp) => {
+  return datedSpells(student).some((sp) => {
     const from = sp.from.slice(0, 7)
     const to = sp.to ? sp.to.slice(0, 7) : '9999-12'
     return monthKey >= from && monthKey <= to
@@ -339,7 +358,7 @@ export function wasEnrolledIn(student: Student, monthKey: string): boolean {
 
 /** Days actually training, skipping any gap between spells. */
 export function tenureDays(student: Student, today = todayISO()): number {
-  return spellsOf(student).reduce(
+  return datedSpells(student).reduce(
     (total, sp) => total + Math.max(0, daysBetween(sp.from, sp.to ?? today)),
     0,
   )
@@ -401,7 +420,12 @@ export function studentProfile(data: AppData, studentId: string): StudentProfile
   const unpaid = unpaidMonthsFor(data, student)
 
   const LEDGER_MONTHS = 12
-  const firstMonth = spells[0].from.slice(0, 7)
+  /* With no dated spell there is no month to start from. `''` would make
+     the loop below run its full twelve and print a year of rows that are
+     all "not enrolled" — a ledger of nothing, which reads as a history
+     rather than as an absence of one. Start at this month instead, so
+     the page shows one row and says nothing it cannot support. */
+  const firstMonth = spells.find((sp) => sp.from)?.from.slice(0, 7) ?? currentMonthKey()
   const months: string[] = []
   for (let m = currentMonthKey(); m >= firstMonth && months.length < LEDGER_MONTHS; m = shiftMonth(m, -1)) {
     months.push(m)
