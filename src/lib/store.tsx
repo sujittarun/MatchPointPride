@@ -25,6 +25,7 @@ import {
   saveBatch as cloudSaveBatch,
   saveStaff as cloudSaveStaff,
   updateStudent as cloudUpdateStudent,
+  updateMemberDetails as cloudUpdateMemberDetails,
   discontinue as cloudDiscontinue,
   reenroll as cloudReenroll,
   isSignedIn,
@@ -577,15 +578,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           /* A returning student: same person, new spell. Knowing the
              member and creating another one anyway is what strands their
              history, so this branch is on the id alone — there is no
-             path from here that inserts a second member row. */
-          await cloudReenroll({
+             path from here that inserts a second member row.
+
+             Coming back is the same three acts as joining, and for a
+             while this branch did only one of them: the details typed
+             on the way in were dropped, and money handed over on the
+             day was never recorded at all. */
+          await cloudUpdateMemberDetails({
+            memberId: input.memberId,
+            name: input.name,
+            phone: input.phone,
+            guardian: input.guardian,
+            note: input.note,
+          })
+          const back = await cloudReenroll({
             memberId: input.memberId,
             centreId: centreId.current,
             batchId,
             feeDueDay: input.feeDueDay,
             joinedOn: input.joinedOn,
             customFee: input.customFee ?? null,
+            settledOnJoining: !!input.paidNow && input.paidNow > 0,
           })
+          if (input.paidNow && input.paidNow > 0) {
+            await cloudRecordPayment({ enrollmentId: back.enrollment_id, amount: input.paidNow })
+          }
         } else {
           const made = await cloudAddStudent({
             name: input.name,

@@ -492,6 +492,28 @@ export async function addStudent(a: {
  * through discontinue() and reenroll() below, which do it in one
  * transaction server-side.
  */
+/**
+ * The person, without touching their arrangement.
+ *
+ * Split out because bringing a student back also edits them — a phone
+ * corrected on the way in used to be typed, saved, and dropped, since
+ * the rejoin path only ever wrote the enrolment.
+ */
+export async function updateMemberDetails(a: {
+  memberId: number
+  name: string
+  phone: string
+  guardian?: string
+  note?: string
+}): Promise<void> {
+  await request('PATCH', `/members?id=eq.${a.memberId}&tenant_id=eq.${TENANT}`, {
+    name: a.name,
+    parent_name: a.guardian ?? null,
+    parent_phone: a.phone,
+    notes: a.note ?? null,
+  })
+}
+
 export async function updateStudent(a: {
   memberId: number
   enrollmentId: number
@@ -506,12 +528,7 @@ export async function updateStudent(a: {
   /** What it is today, so an unchanged day is left alone. */
   currentRenewalOn?: string
 }): Promise<void> {
-  await request('PATCH', `/members?id=eq.${a.memberId}&tenant_id=eq.${TENANT}`, {
-    name: a.name,
-    parent_name: a.guardian ?? null,
-    parent_phone: a.phone,
-    notes: a.note ?? null,
-  })
+  await updateMemberDetails(a)
 
   /* Moving the billing day.
      Anchored to their CURRENT due date, not to today, so the new day is
@@ -582,6 +599,8 @@ export async function reenroll(a: {
   feeDueDay: number
   joinedOn?: string
   customFee?: number | null
+  /** Same rule as a new student: the skip protects the unpaid only. */
+  settledOnJoining?: boolean
 }): Promise<{ enrollment_id: number; renewal_on: string }> {
   const out = await rpc<{ enrollment_id: number; renewal_on: string }>('reenroll_member', {
     p_tenant: TENANT,
@@ -590,7 +609,10 @@ export async function reenroll(a: {
     p_batch: a.batchId,
     p_sport: 'badminton',
     p_joined_on: a.joinedOn ?? null,
-    p_renewal_on: firstDueDate(a.feeDueDay, a.joinedOn ?? new Date().toISOString().slice(0, 10)),
+    p_renewal_on: (a.settledOnJoining ? nextDueDate : firstDueDate)(
+      a.feeDueDay,
+      a.joinedOn ?? new Date().toISOString().slice(0, 10),
+    ),
     p_plan_months: 1,
     p_custom_amount: a.customFee ?? null,
   })

@@ -634,6 +634,24 @@ ok('a missing phone is blocked but is not "stopped chasing"',
 eq('every blocked reason is still reachable somewhere',
    blockedReminders(withBlocks).map((r) => r.id), ['a', 'b', 'c'])
 
+/* ================= coming back is joining again =================
+   The rejoin path had drifted from the join path in two ways that only
+   a full pass caught: money handed over on the way back was never
+   recorded, and the seven-day skip was applied whether or not they
+   paid — reintroducing, on the other path, the bug where a month's fee
+   bought five weeks. Both rules must match `firstDueDate` exactly. */
+eq('returning unpaid on the 29th still waits for September',
+   firstDueDate(1, '2026-07-29'), '2026-09-01')
+eq('returning and paying starts at the very next billing day',
+   nextDueDate(1, '2026-07-29'), '2026-08-01')
+ok('the join and rejoin rules agree for every fee day and start date',
+   ['2026-01-09','2026-02-26','2026-07-29','2026-11-28'].every(function (d) {
+     return [1, 5, 15, 28, 31].every(function (f) {
+       // unpaid never sooner than a week; paid never later than unpaid
+       return daysBetween(d, firstDueDate(f, d)) >= 7 && nextDueDate(f, d) <= firstDueDate(f, d)
+     })
+   }))
+
 /* ================= registered, never paid =================
    The renewal ladder chases a DATE. A student who joins on the 2nd with
    a fee day of the 1st has no date yet, so the ladder is blind to them
