@@ -19,7 +19,7 @@
    ============================================================ */
 
 import type { AttendanceStatus } from './types'
-import { firstDueDate, nextDueDate } from './format'
+import { nextDueDate } from './format'
 
 const PROJECT = 'https://ugsklcipzyiogxynshnh.supabase.co'
 // Public by design — it is in every tenant's front end. RLS is the
@@ -435,13 +435,8 @@ export async function addStudent(a: {
   feeDueDay: number
   /** Only when the owner overrode the batch fee for this student. */
   customFee?: number | null
-  /**
-   * Did they hand money over on the day? It decides where the cycle
-   * starts, and only that.
-   */
-  settledOnJoining?: boolean
   note?: string
-}): Promise<{ memberId: number; enrollmentId: number }> {
+}): Promise<{ memberId: number; enrollmentId: number; renewalOn: string }> {
   const members = (await request('POST', '/members', {
     tenant_id: TENANT,
     name: a.name,
@@ -456,6 +451,7 @@ export async function addStudent(a: {
   const memberId = members?.[0]?.id
   if (!memberId) throw new CloudError('The student was not created.', 500)
 
+  const firstDue = nextDueDate(a.feeDueDay, a.joinedOn)
   const enrolments = (await request('POST', '/enrollments', {
     tenant_id: TENANT,
     member_id: memberId,
@@ -465,23 +461,19 @@ export async function addStudent(a: {
     plan_months: 1,
     custom_amount: a.customFee ?? null,
     joined_on: a.joinedOn,
-    /* The skip exists to protect someone who has NOT paid: asking for
-       a month's fee three days after they signed up is an ambush. It is
-       the wrong answer for someone who just paid. Their payment covers
-       the stub, so the plain next billing day stands and
-       record_fee_payment carries them from there to the one after —
-       otherwise the two graces stack and a month's money buys five
-       weeks. */
-    renewal_on: a.settledOnJoining
-      ? nextDueDate(a.feeDueDay, a.joinedOn)
-      : firstDueDate(a.feeDueDay, a.joinedOn),
+    /* The fee day on or after joining. Nothing else — no skip, no
+       branch on whether they paid. When that date is soon the SHEET
+       says so before saving; the arithmetic no longer decides quietly
+       on the owner's behalf, which is what made three rounds of this
+       look like arithmetic bugs. */
+    renewal_on: firstDue,
     status: 'active',
   })) as Array<{ id: number }>
   const enrollmentId = enrolments?.[0]?.id
   if (!enrollmentId) throw new CloudError('The student was created without an enrolment.', 500)
 
   track('student_added', { batch: a.batchId })
-  return { memberId, enrollmentId }
+  return { memberId, enrollmentId, renewalOn: firstDue }
 }
 
 /**
@@ -532,7 +524,6 @@ export async function updateStudent(a: {
   /** Has any money arrived in THIS spell? Decides which rule applies. */
   settledThisSpell?: boolean
   /** Only meaningful while unpaid: did they settle on the day? */
-  settledOnJoining?: boolean
 }): Promise<void> {
   await updateMemberDetails(a)
 
@@ -560,7 +551,7 @@ export async function updateStudent(a: {
     const moved = a.settledThisSpell
       ? (a.currentRenewalOn ? nextDueDate(a.feeDueDay, a.currentRenewalOn) : null)
       : (a.joinedOn
-          ? (a.settledOnJoining ? nextDueDate : firstDueDate)(a.feeDueDay, a.joinedOn)
+          ? nextDueDate(a.feeDueDay, a.joinedOn)
           : null)
     if (moved && moved !== a.currentRenewalOn) patch.renewal_on = moved
   }
@@ -582,6 +573,22 @@ export async function updateStudent(a: {
  * is not cancelled here because it is not stored anywhere — it simply
  * stops coming back from reminder_queue.
  */
+/**
+ * Put the billing date back after a registration payment.
+ *
+ * record_fee_payment rolls a whole cycle forward from the renewal,
+ * which is right for every payment except the first: that one settles
+ * the stretch between joining and the first billing day, and must not
+ * push the billing day itself. The platform has no notion of a partial
+ * opening period, so the app restores the date the owner chose. A date,
+ * not an amount — the money stayed in the money function.
+ */
+export async function setRenewalOn(enrollmentId: number, on: string): Promise<void> {
+  await request('PATCH', `/enrollments?id=eq.${enrollmentId}&tenant_id=eq.${TENANT}`, {
+    renewal_on: on,
+  })
+}
+
 export async function discontinue(a: {
   memberId: number
   onDate?: string
@@ -619,8 +626,6 @@ export async function reenroll(a: {
   feeDueDay: number
   joinedOn?: string
   customFee?: number | null
-  /** Same rule as a new student: the skip protects the unpaid only. */
-  settledOnJoining?: boolean
 }): Promise<{ enrollment_id: number; renewal_on: string }> {
   const out = await rpc<{ enrollment_id: number; renewal_on: string }>('reenroll_member', {
     p_tenant: TENANT,
@@ -629,7 +634,8 @@ export async function reenroll(a: {
     p_batch: a.batchId,
     p_sport: 'badminton',
     p_joined_on: a.joinedOn ?? null,
-    p_renewal_on: (a.settledOnJoining ? nextDueDate : firstDueDate)(
+    // Same single rule as joining: coming back IS joining again.
+    p_renewal_on: nextDueDate(
       a.feeDueDay,
       a.joinedOn ?? new Date().toISOString().slice(0, 10),
     ),

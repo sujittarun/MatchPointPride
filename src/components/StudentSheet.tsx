@@ -2,13 +2,17 @@ import { useState } from 'react'
 import { useStore } from '../lib/store'
 import type { Student } from '../lib/types'
 import {
+  FIRST_FEE_WARN_DAYS,
   MAX_AMOUNT,
   clampDay,
   dateLabelFull,
+  daysBetween,
+  nextDueDate,
   nonNegative,
   ordinal,
   todayISO,
 } from '../lib/format'
+import { IconAlert } from './icons'
 import { findExisting } from '../lib/selectors'
 import { Field, Sheet } from './ui'
 
@@ -100,6 +104,14 @@ export function StudentSheet({
    */
   const matches =
     isNew && !ignoreMatches ? findExisting(data.students, name, phone) : []
+
+  /* When the first fee lands, and whether that is soon.
+     The app used to skip a month quietly when this was small. Saying it
+     is simpler and truer: the owner sees the date before saving and can
+     move the fee day if a parent who signed up on Tuesday hearing from
+     us on Friday is not what they want. */
+  const firstFee = (isNew || rejoining) && joinedOn ? nextDueDate(clampDay(dueDay), joinedOn) : null
+  const daysToFee = firstFee ? daysBetween(joinedOn, firstFee) : null
 
   /* Switching batch on a new student re-applies that batch's fee. */
   const pickBatch = (id: string) => {
@@ -265,6 +277,31 @@ export function StudentSheet({
           >
             Not the same person — add anyway
           </button>
+        </div>
+      )}
+
+      {firstFee && daysToFee !== null && daysToFee < FIRST_FEE_WARN_DAYS && (
+        <div
+          className="row gap-10"
+          style={{
+            padding: 12,
+            marginBottom: 14,
+            borderRadius: 'var(--r-md)',
+            background: 'rgba(250,178,25,0.08)',
+            border: '1px solid rgba(250,178,25,0.26)',
+            alignItems: 'flex-start',
+          }}
+        >
+          <IconAlert size={17} style={{ color: '#ffd166', flexShrink: 0, marginTop: 1 }} />
+          <div className="grow">
+            <div style={{ fontSize: '0.86rem', fontWeight: 600 }}>
+              First fee is {daysToFee === 0 ? 'due the day they join' : `${daysToFee} day${daysToFee === 1 ? '' : 's'} after joining`}
+            </div>
+            <p className="t-mut" style={{ lineHeight: 1.5, marginTop: 3 }}>
+              {dateLabelFull(firstFee)} — so the first reminder goes out then. Move the
+              fee day if that is too soon after signing up.
+            </p>
+          </div>
         </div>
       )}
 

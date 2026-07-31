@@ -28,6 +28,7 @@ import {
   updateMemberDetails as cloudUpdateMemberDetails,
   discontinue as cloudDiscontinue,
   reenroll as cloudReenroll,
+  setRenewalOn as cloudSetRenewalOn,
   isSignedIn,
   loadEverything,
   refreshToken,
@@ -619,10 +620,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             feeDueDay: input.feeDueDay,
             joinedOn: input.joinedOn,
             customFee: input.customFee ?? null,
-            settledOnJoining: !!input.paidNow && input.paidNow > 0,
           })
           if (input.paidNow && input.paidNow > 0) {
             await cloudRecordPayment({ enrollmentId: back.enrollment_id, amount: input.paidNow })
+            // the first payment settles the opening stretch; it must not
+            // push the billing day the owner just chose
+            await cloudSetRenewalOn(back.enrollment_id, back.renewal_on)
           }
         } else {
           const made = await cloudAddStudent({
@@ -635,7 +638,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             feeDueDay: input.feeDueDay,
             customFee: input.customFee ?? null,
             note: input.note,
-            settledOnJoining: !!input.paidNow && input.paidNow > 0,
           })
           /* Registering and paying are two things, and the second one is
              optional. If money changed hands it goes through the same
@@ -645,6 +647,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
              leaves them plainly unpaid, which the app then shows. */
           if (input.paidNow && input.paidNow > 0) {
             await cloudRecordPayment({ enrollmentId: made.enrollmentId, amount: input.paidNow })
+            await cloudSetRenewalOn(made.enrollmentId, made.renewalOn)
           }
         }
         await refresh()

@@ -3,7 +3,7 @@
 import {
   addDays, currentMonthKey, dateLabelFull, daysBetween, daysInMonth, dueLabel,
   clampDay, fromISO, inr, initials, isSunday, lastMonths, monthDates, monthLabel,
-  dueDateFor, firstDueDate, nextDueDate, ordinal, shiftMonth, toISO, todayISO, uid, weekday,
+  dueDateFor, daysToFirstFee, FIRST_FEE_WARN_DAYS, nextDueDate, ordinal, shiftMonth, toISO, todayISO, uid, weekday,
 } from '../src/lib/format'
 import {
   collectionRate, dashboard, expenseByCategory, moneyByMonth, monthTotals,
@@ -558,44 +558,36 @@ eq('a return dated in the future bills from the future date',
 ok('a backdated return lands in the past, so the ladder can see it',
    nextDueDate(27, '2026-06-15') < '2026-07-29')
 
-/* The FIRST fee is not simply the next billing day.
-   Register someone on the 29th with a fee day of the 1st and the next
-   one is three days away: a full month asked for before the child has
-   had a second session, and a heads-up the day after signing up. A
-   billing day inside a week of joining is skipped. */
-eq('joined the 29th, fee day the 1st — waits for September, not August',
-   firstDueDate(1, '2026-07-29'), '2026-09-01')
-eq('three clear weeks is plenty of notice, so it stands',
-   firstDueDate(1, '2026-07-05'), '2026-08-01')
-eq('joining on your own fee day does not bill you that same day',
-   firstDueDate(5, '2026-08-05'), '2026-09-05')
-/* Reported from the simulator: joined 15 June, fee day the 15th. Both
-   routes must land on 15 JULY — one month, not two. A stale build gave
-   16 August by skipping to July and then adding a month on top, which
-   is the two-graces-stacking bug wearing different numbers. */
-eq('joined 15 Jun on the 15th, unpaid', firstDueDate(15, '2026-06-15'), '2026-07-15')
-eq('joined 15 Jun on the 15th, paid on the day', nextDueDate(15, '2026-06-15'), '2026-06-15')
-ok('and paying then rolls exactly one month, to July not August',
-   firstDueDate(15, '2026-06-15') === '2026-07-15')
-eq('a week is the line, and a week is enough',
-   firstDueDate(8, '2026-08-01'), '2026-08-08')
-eq('six days is not', firstDueDate(7, '2026-08-01'), '2026-09-07')
-eq('skipping still clamps in a short month', firstDueDate(31, '2026-01-28'), '2026-02-28')
-/* The skip is for the UNPAID. Someone who settles on the day has
-   already covered the stub, so the plain next billing day stands and
-   their payment carries them to the one after. Skipping as well would
-   stack two graces and sell a month for five weeks. */
-eq('unpaid on the 29th waits for September', firstDueDate(1, '2026-07-29'), '2026-09-01')
-eq('paid on the 29th starts at the very next billing day', nextDueDate(1, '2026-07-29'), '2026-08-01')
-ok('so paying on the day never buys longer than not paying',
-   ['2026-07-29','2026-03-30','2026-11-28'].every(function (j) {
-     return [1, 5, 15].every(function (d) { return nextDueDate(d, j) <= firstDueDate(d, j) })
-   }))
+/* The first fee is the billing day on or after joining. Nothing else.
 
-ok('no first fee ever lands sooner than a week after joining',
+   It used to skip a month when that day fell close, silently, and every
+   attempt to state the rule more precisely produced another wrong
+   answer: joined the 31st on a fee day of the 29th billed in September;
+   joined the 2nd on the 1st billed in October; joined the 15th on the
+   15th billed in August. The arithmetic was never the problem — a
+   decision the owner could not see was.
+
+   The date is plain now and the SHEET warns when it is soon. Every one
+   of the cases reported wrong is the obvious answer below. */
+eq('joined the 31st, fee day the 29th', nextDueDate(29, '2026-07-31'), '2026-08-29')
+eq('joined the 2nd, fee day the 1st',   nextDueDate(1,  '2026-08-02'), '2026-09-01')
+eq('joined the 15th, fee day the 15th', nextDueDate(15, '2026-06-15'), '2026-06-15')
+eq('joined the 29th, fee day the 1st',  nextDueDate(1,  '2026-07-29'), '2026-08-01')
+eq('joined the 5th, fee day the 1st',   nextDueDate(1,  '2026-07-05'), '2026-08-01')
+eq('short month still clamps',          nextDueDate(31, '2026-01-28'), '2026-01-31')
+
+/* The warning fires exactly when the gap is under twenty days — the
+   owner's number, chosen because a parent who signs up on Tuesday
+   should not be surprised to hear from us on Friday. */
+eq('three days out warns',      daysToFirstFee(1,  '2026-07-29') < FIRST_FEE_WARN_DAYS, true)
+eq('the same day warns',        daysToFirstFee(15, '2026-06-15') < FIRST_FEE_WARN_DAYS, true)
+eq('twenty-nine days is quiet', daysToFirstFee(29, '2026-07-31') < FIRST_FEE_WARN_DAYS, false)
+eq('thirty days is quiet',      daysToFirstFee(1,  '2026-08-02') < FIRST_FEE_WARN_DAYS, false)
+ok('the first fee lands on the fee day, clamped, and never before joining',
    ['2026-01-09','2026-02-20','2026-03-31','2026-07-29','2026-11-27'].every(function (j) {
      return [1, 5, 15, 28, 31].every(function (d) {
-       return daysBetween(j, firstDueDate(d, j)) >= 7
+       const due = nextDueDate(d, j)
+       return due >= j && Number(due.slice(8)) === Math.min(d, daysInMonth(due.slice(0, 7)))
      })
    }))
 
@@ -647,17 +639,10 @@ eq('every blocked reason is still reachable somewhere',
    a full pass caught: money handed over on the way back was never
    recorded, and the seven-day skip was applied whether or not they
    paid — reintroducing, on the other path, the bug where a month's fee
-   bought five weeks. Both rules must match `firstDueDate` exactly. */
-eq('returning unpaid on the 29th still waits for September',
-   firstDueDate(1, '2026-07-29'), '2026-09-01')
-eq('returning and paying starts at the very next billing day',
-   nextDueDate(1, '2026-07-29'), '2026-08-01')
-ok('the join and rejoin rules agree for every fee day and start date',
+   bought five weeks. Both must use the one rule above. */
+ok('coming back uses the identical rule as joining',
    ['2026-01-09','2026-02-26','2026-07-29','2026-11-28'].every(function (d) {
-     return [1, 5, 15, 28, 31].every(function (f) {
-       // unpaid never sooner than a week; paid never later than unpaid
-       return daysBetween(d, firstDueDate(f, d)) >= 7 && nextDueDate(f, d) <= firstDueDate(f, d)
-     })
+     return [1, 5, 15, 28, 31].every(function (f) { return nextDueDate(f, d) >= d })
    }))
 
 /* ================= registered, never paid =================
