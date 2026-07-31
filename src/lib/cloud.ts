@@ -547,13 +547,26 @@ export async function updateStudent(a: {
     batch_id: a.batchId,
     custom_amount: a.customFee ?? null,
   }
-  if (a.feeDueDay) {
+  /* The billing date moves ONLY when the owner actually moved it.
+
+     `currentRenewalOn` is required, not optional. Without it there is
+     nothing to compare against, so "did this change?" cannot be
+     answered and any value written is a guess. The Remove button proved
+     that: BatchDetail and StudentDetail build this input by hand, pass
+     feeDueDay because the type demands it, and pass no current date —
+     so every removal silently rewrote renewal_on from the joining date,
+     months into the past, before discontinue_member even ran. A student
+     removed and brought back landed straight in the +15 blocked bucket.
+
+     Comparing the DAY rather than trusting the caller is the other half:
+     the Remove path passes the student's existing fee day, which is not
+     a change and must write nothing. */
+  const currentDay = a.currentRenewalOn ? Number(a.currentRenewalOn.slice(8, 10)) : null
+  if (a.feeDueDay && a.currentRenewalOn && currentDay !== null && a.feeDueDay !== currentDay) {
     const moved = a.settledThisSpell
-      ? (a.currentRenewalOn ? nextDueDate(a.feeDueDay, a.currentRenewalOn) : null)
-      : (a.joinedOn
-          ? nextDueDate(a.feeDueDay, a.joinedOn)
-          : null)
-    if (moved && moved !== a.currentRenewalOn) patch.renewal_on = moved
+      ? nextDueDate(a.feeDueDay, a.currentRenewalOn)
+      : nextDueDate(a.feeDueDay, a.joinedOn ?? a.currentRenewalOn)
+    if (moved !== a.currentRenewalOn) patch.renewal_on = moved
   }
 
   await request('PATCH', `/enrollments?id=eq.${a.enrollmentId}&tenant_id=eq.${TENANT}`, patch)
