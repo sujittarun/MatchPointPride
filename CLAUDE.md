@@ -128,7 +128,7 @@ rows behind them.
 
 ```bash
 npm install && npm run dev
-npm test        # 232 assertions
+npm test        # 242 assertions
 ```
 
 `npm test` covers the TypeScript that is left — shaping, dates, lookup.

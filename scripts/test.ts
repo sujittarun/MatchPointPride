@@ -3,7 +3,8 @@
 import {
   addDays, currentMonthKey, dateLabelFull, daysBetween, daysInMonth, dueLabel,
   clampDay, fromISO, inr, initials, isSunday, lastMonths, monthDates, monthLabel,
-  dueDateFor, daysToFirstFee, FIRST_FEE_WARN_DAYS, nextDueDate, ordinal, shiftMonth, toISO, todayISO, uid, weekday,
+  dueDateFor, daysToFirstFee, FIRST_FEE_WARN_DAYS, nextDueDate, ordinal, renewalAfterFeeDayChange,
+  shiftMonth, toISO, todayISO, uid, weekday,
 } from '../src/lib/format'
 import {
   collectionRate, dashboard, expenseByCategory, moneyByMonth, monthTotals,
@@ -498,6 +499,70 @@ eq('three days out warns',      daysToFirstFee(1,  '2026-07-29') < FIRST_FEE_WAR
 eq('the same day warns',        daysToFirstFee(15, '2026-06-15') < FIRST_FEE_WARN_DAYS, true)
 eq('twenty-nine days is quiet', daysToFirstFee(29, '2026-07-31') < FIRST_FEE_WARN_DAYS, false)
 eq('thirty days is quiet',      daysToFirstFee(1,  '2026-08-02') < FIRST_FEE_WARN_DAYS, false)
+
+/* -------- changing the billing day of a student who already exists ----
+   Changing WHICH DAY they are billed must not change HOW MUCH they owe.
+   Both bugs here were the same shape: a rule that is correct while the
+   joining date is recent, applied to a student whose joining date is
+   not. -------------------------------------------------------------- */
+const feeDay = (a: Parameters<typeof renewalAfterFeeDayChange>[0]) => renewalAfterFeeDayChange(a)
+
+eq('unpaid, joined days ago: new day, same month',
+   feeDay({ feeDay: 1, currentRenewalOn: '2026-08-05', joinedOn: '2026-07-26' }), '2026-08-01')
+
+// The 242-day backdate. Re-deriving from a joining date eight months old
+// put them past +15, where the ladder stops — so the app silently gave up
+// chasing exactly the student the owner had just opened to chase.
+eq('unpaid, joined 8 months ago: does NOT backdate',
+   feeDay({ feeDay: 1, currentRenewalOn: '2026-08-05', joinedOn: '2025-11-26' }), '2026-08-01')
+
+eq('paid this spell: never earlier than what they already owe',
+   feeDay({ feeDay: 1, currentRenewalOn: '2026-08-05', joinedOn: '2025-11-26', settledThisSpell: true }),
+   '2026-09-01')
+
+eq('new day precedes joining: next occurrence after joining',
+   feeDay({ feeDay: 1, currentRenewalOn: '2026-08-05', joinedOn: '2026-08-02' }), '2026-09-01')
+
+// A renewal that predates the enrolment is a contradiction, not a date.
+ok('never lands before the joining date', (() => {
+  for (let d = 1; d <= 31; d++) {
+    const r = feeDay({ feeDay: d, currentRenewalOn: '2026-08-05', joinedOn: '2026-08-02' })
+    if (r && r < '2026-08-02') return false
+  }
+  return true
+})())
+
+// Callers that build the input by hand pass a fee day and no current
+// date. That must write nothing — it is how the Remove button used to
+// rewrite renewal_on months into the past before discontinue_member ran.
+eq('no current date: writes nothing',
+   feeDay({ feeDay: 1, joinedOn: '2025-11-26' }), null)
+eq('unchanged day: writes nothing',
+   feeDay({ feeDay: 5, currentRenewalOn: '2026-08-05', joinedOn: '2025-11-26' }), null)
+eq('no fee day: writes nothing',
+   feeDay({ feeDay: 0, currentRenewalOn: '2026-08-05' }), null)
+
+// February clamps 31 to 28, which is the day it already is — so moving a
+// February renewal to "the 31st" is not a change and writes nothing.
+eq('short month clamps to no-op',
+   feeDay({ feeDay: 31, currentRenewalOn: '2026-02-28', joinedOn: '2026-01-10' }), null)
+
+// Whatever it returns is a real date on the requested day, or the last
+// day of a month too short to have one.
+ok('always a valid date on the wanted day', (() => {
+  for (let d = 1; d <= 31; d++) {
+    for (const cur of ['2026-01-15', '2026-02-15', '2026-04-15', '2026-12-15']) {
+      for (const settled of [true, false]) {
+        const r = feeDay({ feeDay: d, currentRenewalOn: cur, joinedOn: '2025-01-01', settledThisSpell: settled })
+        if (!r) continue
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(r)) return false
+        const want = Math.min(d, daysInMonth(r.slice(0, 7)))
+        if (Number(r.slice(8, 10)) !== want) return false
+      }
+    }
+  }
+  return true
+})())
 ok('the first fee lands on the fee day, clamped, and never before joining',
    ['2026-01-09','2026-02-20','2026-03-31','2026-07-29','2026-11-27'].every(function (j) {
      return [1, 5, 15, 28, 31].every(function (d) {

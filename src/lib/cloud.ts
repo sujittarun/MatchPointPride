@@ -19,7 +19,7 @@
    ============================================================ */
 
 import type { AttendanceStatus } from './types'
-import { nextDueDate, toISO, todayISO } from './format'
+import { nextDueDate, renewalAfterFeeDayChange, toISO, todayISO } from './format'
 
 const PROJECT = 'https://ugsklcipzyiogxynshnh.supabase.co'
 // Public by design — it is in every tenant's front end. RLS is the
@@ -526,47 +526,28 @@ export async function updateStudent(a: {
 }): Promise<void> {
   await updateMemberDetails(a)
 
-  /* Moving the billing day. One rule, two situations, and telling them
-     apart is the whole of it:
-
-     Nothing paid this spell — they are still being SET UP. The current
-     renewal was derived from the fee day being replaced, so nudging it
-     forward compounds a number that is about to be wrong. Re-derive
-     from the day they joined, exactly as registering them would.
-
-     Something paid — they are ESTABLISHED and mid-cycle. Move to the
-     next occurrence on or after what they already owe, never earlier,
-     so correcting a typo cannot pull a paid-up student backwards into a
-     chase they do not deserve.
-
-     Conflating the two is how "change the fee day to the 1st" on a
-     student registered today produced a first fee in October: set up
-     with the 5th, renewal computed to September, then nudged past it. */
   const patch: Record<string, unknown> = {
     batch_id: a.batchId,
     custom_amount: a.customFee ?? null,
   }
-  /* The billing date moves ONLY when the owner actually moved it.
+  /* The billing date moves ONLY when the owner actually moved it, and
+     the rule for where it lands is in `renewalAfterFeeDayChange` — pure,
+     and tested there, because the two ways this has gone wrong were both
+     arithmetic rather than transport.
 
-     `currentRenewalOn` is required, not optional. Without it there is
-     nothing to compare against, so "did this change?" cannot be
-     answered and any value written is a guess. The Remove button proved
-     that: BatchDetail and StudentDetail build this input by hand, pass
-     feeDueDay because the type demands it, and pass no current date —
-     so every removal silently rewrote renewal_on from the joining date,
-     months into the past, before discontinue_member even ran. A student
-     removed and brought back landed straight in the +15 blocked bucket.
-
-     Comparing the DAY rather than trusting the caller is the other half:
-     the Remove path passes the student's existing fee day, which is not
-     a change and must write nothing. */
-  const currentDay = a.currentRenewalOn ? Number(a.currentRenewalOn.slice(8, 10)) : null
-  if (a.feeDueDay && a.currentRenewalOn && currentDay !== null && a.feeDueDay !== currentDay) {
-    const moved = a.settledThisSpell
-      ? nextDueDate(a.feeDueDay, a.currentRenewalOn)
-      : nextDueDate(a.feeDueDay, a.joinedOn ?? a.currentRenewalOn)
-    if (moved !== a.currentRenewalOn) patch.renewal_on = moved
-  }
+     Returning null rather than a date is the part that matters here.
+     BatchDetail and StudentDetail build this input by hand and pass a
+     fee day because the type demands one, with no current date; the
+     Remove button did that and silently rewrote renewal_on months into
+     the past before discontinue_member even ran, so a student removed
+     and brought back landed straight in the +15 blocked bucket. */
+  const moved = renewalAfterFeeDayChange({
+    feeDay: a.feeDueDay ?? 0,
+    currentRenewalOn: a.currentRenewalOn,
+    joinedOn: a.joinedOn,
+    settledThisSpell: a.settledThisSpell,
+  })
+  if (moved) patch.renewal_on = moved
 
   await request('PATCH', `/enrollments?id=eq.${a.enrollmentId}&tenant_id=eq.${TENANT}`, patch)
   track('student_updated', {})

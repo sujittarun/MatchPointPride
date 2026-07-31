@@ -258,6 +258,60 @@ export function dueDateFor(monthKey: string, feeDay: number): string {
   return `${monthKey}-${String(day).padStart(2, '0')}`
 }
 
+/**
+ * Where the renewal lands when the owner changes the billing DAY of a
+ * student who already exists. `null` means write nothing.
+ *
+ * Changing the day must not change how much they owe. So the cycle they
+ * are in stays the cycle they are in, and only the day inside it moves.
+ *
+ * This is the one piece of billing-date arithmetic still on this side of
+ * the wire, and it is here rather than in `cloud.ts` so it can be tested
+ * without a session. It exists at all only because `enrollments` has no
+ * `fee_day` column: the billing day is stored implicitly, as the
+ * day-of-month of `renewal_on`, so the only way to change it is to
+ * rewrite the date. Give the column a home server-side and this function
+ * and its caller both go away — along with the separate drift where
+ * `record_fee_payment` rolls a 31st forward to the 28th in February and
+ * then leaves it on the 28th for ever.
+ */
+export function renewalAfterFeeDayChange(a: {
+  feeDay: number
+  currentRenewalOn?: string
+  joinedOn?: string
+  /** Has any money arrived this spell? Decides which of the two rules applies. */
+  settledThisSpell?: boolean
+}): string | null {
+  /* No current date means there is nothing to compare against, so "did
+     this change?" cannot be answered and any value written is a guess.
+     The Remove button proved it: callers that build this by hand pass a
+     fee day because the type demands one, and no current date. */
+  if (!a.feeDay || !a.currentRenewalOn) return null
+  const currentDay = Number(a.currentRenewalOn.slice(8, 10))
+  if (!Number.isFinite(currentDay) || currentDay === a.feeDay) return null
+
+  let moved: string
+  if (a.settledThisSpell) {
+    /* Established and mid-cycle: never earlier than what they already
+       owe, so correcting a typo cannot take days off time they paid for. */
+    moved = nextDueDate(a.feeDay, a.currentRenewalOn)
+  } else {
+    /* Unpaid: same month, new day. NOT "re-derive from the joining
+       date" — that is right only while joining is recent, and silently
+       catastrophic once it is not. A student who joined eight months ago
+       and never paid had their renewal rewritten 242 days into the past
+       the moment their fee day was corrected, which put them past +15,
+       where the ladder stops and hands over to manual. The app quietly
+       stopped chasing the student the owner had just opened to chase. */
+    moved = dueDateFor(a.currentRenewalOn.slice(0, 7), a.feeDay)
+    /* One guard: the new day can fall before they joined — registered on
+       the 2nd, billed on the 5th, moved to the 1st. A renewal that
+       predates the enrolment is not a date, it is a contradiction. */
+    if (a.joinedOn && moved < a.joinedOn) moved = nextDueDate(a.feeDay, a.joinedOn)
+  }
+  return moved === a.currentRenewalOn ? null : moved
+}
+
 export function uid(prefix = 'id'): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36).slice(-4)}`
 }
