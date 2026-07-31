@@ -198,7 +198,6 @@ interface Ctx {
   data: AppData
   update: (fn: (draft: AppData) => void) => void
   setSettings: (patch: Partial<Settings>) => void
-  exportJSON: () => Promise<string>
   authed: boolean
   login: (code: string) => Promise<boolean>
   /** First run on this device: email + password once, then a PIN. */
@@ -358,18 +357,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
     },
     [update],
-  )
-
-
-  /* Screenshots live in IndexedDB, so a backup of the JSON alone would
-     silently drop the payment evidence. They ride along under `images`. */
-  const exportJSON = useCallback(
-    /* Screenshots are not in here any more — they live in the private
-       payment-proofs bucket, attached to the payment they evidence. A
-       backup is a readable copy of the records, not a way to move the
-       academy between devices; the database does that. */
-    async () => JSON.stringify(data, null, 2),
-    [data],
   )
 
 
@@ -704,13 +691,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Ctx>(
     () => ({
       data, update, setSettings,
-      exportJSON, authed, login, enrol, enrolled: vault.isEnrolled(), logout, toasts, toast,
+      authed, login, enrol, enrolled: vault.isEnrolled(), logout, toasts, toast,
       loading, loadError, refresh, saveStudent,
       saveBatch, removeBatch, recordFee, addRevenue, addExpense,
       saveStaff, removeStaff, markStaffDay, logReminderSent, removeEntry,
     }),
     [data, update, setSettings,
-     exportJSON, authed, login, enrol, logout, toasts, toast, loading, loadError, refresh, saveStudent,
+     authed, login, enrol, logout, toasts, toast, loading, loadError, refresh, saveStudent,
      saveBatch, removeBatch, recordFee, addRevenue, addExpense,
      saveStaff, removeStaff, markStaffDay, logReminderSent, removeEntry],
   )

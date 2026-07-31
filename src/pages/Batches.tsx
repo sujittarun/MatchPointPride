@@ -319,14 +319,9 @@ export function BatchSheet({
   const [days, setDays] = useState<string[]>([])
   const [fee, setFee] = useState('')
   const [capacity, setCapacity] = useState('')
-  const [upiId, setUpiId] = useState('')
-  const [upiName, setUpiName] = useState('')
   const [note, setNote] = useState('')
   const [key, setKey] = useState('')
 
-  /* UPI IDs already in use, so a second batch can be pointed at the same
-     account with one tap instead of retyping it. */
-  const knownUpis = [...new Set(data.batches.map((x) => x.upiId).filter(Boolean))] as string[]
 
   // Re-seed the form whenever a different batch is opened.
   const openKey = value === null ? '' : isNew ? 'new' : (b as Batch).id
@@ -338,8 +333,6 @@ export function BatchSheet({
     setDays(b?.days ?? [])
     setFee(b ? String(b.fee) : '')
     setCapacity(b?.capacity ? String(b.capacity) : '')
-    setUpiId(b?.upiId ?? '')
-    setUpiName(b?.upiName ?? '')
     setNote(b?.note ?? '')
   }
 
@@ -355,11 +348,6 @@ export function BatchSheet({
     }
     if (nonNegative(fee) > MAX_AMOUNT) {
       toast('That fee looks too large — check the digits.', 'bad')
-      return
-    }
-    const upi = upiId.trim()
-    if (upi && !/^[\w.\-]{2,}@[a-zA-Z]{2,}$/.test(upi)) {
-      toast('That UPI ID doesn\u2019t look right — it should read like name@bank.', 'bad')
       return
     }
     /* The fee is not a column on the batch — it is a fee_rules row that
@@ -476,52 +464,18 @@ export function BatchSheet({
           />
         </Field>
 
-        <Field
-          label="Collect fees at (UPI ID)"
-          hint="Added to this batch's reminder messages. Leave blank to send no payment details."
-          span
-        >
-          <input
-            className="input"
-            value={upiId}
-            onChange={(e) => setUpiId(e.target.value)}
-            placeholder="matchpoint@ybl"
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-          />
-        </Field>
+        {/* The UPI ID and payee name used to be collected here, validated,
+            and then dropped — saveBatch writes the batch row and the fee
+            rule, and never touched them. So a batch always read back with
+            no UPI, the reminder quietly omitted its "pay to" line, and
+            every parent got a chase with no way to pay.
 
-        {knownUpis.length > 0 && (
-          <div className="span-2" style={{ marginTop: -4 }}>
-            <div className="t-mut" style={{ marginBottom: 6 }}>
-              Use the same as another batch:
-            </div>
-            <div className="row gap-6 wrap">
-              {knownUpis.map((u) => (
-                <button
-                  key={u}
-                  type="button"
-                  className={`chip${upiId === u ? ' chip--on' : ''}`}
-                  style={{ minHeight: 34, padding: '6px 11px', fontSize: '0.76rem' }}
-                  onClick={() => setUpiId(u)}
-                >
-                  {u}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <Field label="Payee name" hint="Optional — shown in the message so parents can check." span>
-          <input
-            className="input"
-            value={upiName}
-            onChange={(e) => setUpiName(e.target.value)}
-            placeholder="Match Point Pride"
-            autoComplete="off"
-          />
-        </Field>
+            They belong in tenants.config.billing.upiByBatch, which is
+            where the app READS them from (see loadEverything). Writing
+            there needs a platform RPC — tenant config is not a tenant
+            app's to PATCH — so the fields are removed rather than left
+            looking like they work. The academy's single UPI is already
+            configured platform-side and reaches the message. */}
 
         <Field label="Note" span>
           <textarea

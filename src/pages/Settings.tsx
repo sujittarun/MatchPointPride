@@ -1,116 +1,37 @@
-import { useRef, useState, type ChangeEvent } from 'react'
+import { useState } from 'react'
 import { useStore } from '../lib/store'
-import { todayISO } from '../lib/format'
-import {
-  downloadText,
-  studentsFromCSV,
-  studentsToCSV,
-  type ImportReport,
-} from '../lib/csv'
 import { Field, Sheet } from '../components/ui'
-import {
-  IconAlert,
-  IconDownload,
-  IconLock,
-  IconUpload,
-} from '../components/icons'
+import { IconAlert, IconLock } from '../components/icons'
+
+/* Export, import and backup are gone.
+
+   A backup downloaded to a phone is a file full of student names and
+   parents' phone numbers, stale the moment it is written, sitting in
+   Downloads for ever. The academy's records live in Postgres and are
+   backed up there nightly; nothing about this app is the copy of record.
+
+   Import was worse than useless — it was untrue. It called setData,
+   which writes React state and nothing else, so the next read from the
+   database replaced whatever it loaded. The owner saw "12 students
+   imported" and had imported nothing. That is the same silent-success
+   failure this app has removed twice before, and the reason to delete
+   it rather than fix it: bulk-loading students belongs in the one-shot
+   import script, run once, not behind a button that can be pressed
+   every day.
+
+   The CSV export went with them. On its own it was harmless, but it is
+   the same personal data leaving the same building through the same
+   door, and nothing reads it back. */
 
 export default function Settings() {
-  const {
-    data, exportJSON, toast, saveStudent,
-  } = useStore()
-  const csvRef = useRef<HTMLInputElement | null>(null)
-
   const [passOpen, setPassOpen] = useState(false)
-  const [report, setReport] = useState<ImportReport | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  /* ---------------- students spreadsheet ---------------- */
-
-  const exportStudents = () => {
-    downloadText(
-      `matchpoint-students-${todayISO()}.csv`,
-      studentsToCSV(data),
-      'text/csv;charset=utf-8',
-    )
-    toast(
-      data.students.length > 0
-        ? `${data.students.length} students exported.`
-        : 'Empty sheet exported — use it as your template.',
-    )
-  }
-
-  const onCSV = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      const res = studentsFromCSV(String(reader.result), data)
-      setReport(res)
-      if (!res.ok) return
-      /* Each row is a real insert, one at a time, so a bad row fails on
-         its own instead of taking the file down with it. The count the
-         owner sees is what actually landed, not what was parsed. */
-      void (async () => {
-        let ok = 0
-        for (const st of res.rows ?? []) {
-          const batch = data.batches.find((b) => b.id === st.batchId)
-          if (!batch) continue
-          const r = await saveStudent({
-            name: st.name,
-            phone: st.phone,
-            guardian: st.guardian,
-            batchId: batch.id,
-            joinedOn: st.joinedOn,
-            feeDueDay: st.feeDueDay,
-            active: true,
-          })
-          if (r.ok) ok++
-        }
-        toast(
-          ok === (res.rows?.length ?? 0)
-            ? `${ok} student${ok === 1 ? '' : 's'} imported.`
-            : `${ok} of ${res.rows?.length ?? 0} imported — the rest were rejected.`,
-          ok === (res.rows?.length ?? 0) ? 'good' : 'bad',
-        )
-      })()
-    }
-    reader.readAsText(file)
-    e.target.value = ''
-  }
-
-  /* ---------------- full backup ---------------- */
-
-  const backup = async () => {
-    setBusy(true)
-    try {
-      downloadText(
-        `matchpoint-backup-${todayISO()}.json`,
-        await exportJSON(),
-        'application/json',
-      )
-      toast('Backup downloaded — screenshots included.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  /* Restore, Start fresh and Reload demo are gone.
-
-     All three rewrote a local document, and there is no local document
-     — the next read from Postgres replaced whatever they wrote, so the
-     button appeared to work and changed nothing. Clearing the academy's
-     real data is a deliberate act that belongs in the operator console,
-     not behind a button on the owner's phone. */
-
-
 
   return (
     <main className="page">
       <div className="page__head">
         <h1 className="t-h1">Settings</h1>
         <p className="t-sub" style={{ marginTop: 3 }}>
-          PIN, student sheet and backups.
+          The PIN that unlocks this phone.
         </p>
       </div>
 
@@ -144,94 +65,6 @@ export default function Settings() {
             encrypted with, not a password checked in the page. Someone with the link and
             no PIN reaches nothing.
           </p>
-        </div>
-      </div>
-
-      {/* ---------- students sheet ---------- */}
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div className="card__head">
-          <div>
-            <div className="card__title">Student sheet</div>
-            <div className="card__sub">
-              {data.students.length} students · opens in Excel, Numbers or Google Sheets
-            </div>
-          </div>
-        </div>
-
-        <div className="row gap-8">
-          <button className="btn btn--primary grow" onClick={exportStudents}>
-            <IconDownload size={16} /> Export
-          </button>
-          <button className="btn grow" onClick={() => csvRef.current?.click()}>
-            <IconUpload size={16} /> Import
-          </button>
-        </div>
-        <input
-          ref={csvRef}
-          type="file"
-          accept=".csv,text/csv"
-          onChange={onCSV}
-          style={{ display: 'none' }}
-        />
-
-        {report && (
-          <p className={report.ok ? 't-mut' : 't-bad'} style={{ marginTop: 12, lineHeight: 1.5 }}>
-            {report.message}
-            {report.skipped.length > 0 && (
-              <>
-                {' '}
-                Skipped: {report.skipped.map((x) => `${x.name} (${x.why})`).join(', ')}.
-              </>
-            )}
-          </p>
-        )}
-
-        <ul className="t-mut" style={{ marginTop: 12, lineHeight: 1.6 }}>
-          <li>
-            • Only <b>Name</b> and <b>Batch</b> are required — the batch name has to match one
-            of yours.
-          </li>
-          <li>• A student already in that batch is updated, not duplicated.</li>
-          <li>• Export with no students to get a blank template.</li>
-        </ul>
-      </div>
-
-      {/* ---------- backup ---------- */}
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div className="card__head">
-          <div>
-            <div className="card__title">Backup</div>
-            <div className="card__sub">
-              {data.transactions.length} transactions · {data.attendance.length} attendance
-              records
-            </div>
-          </div>
-        </div>
-
-        <div
-          className="row gap-10"
-          style={{
-            marginBottom: 14,
-            padding: 12,
-            borderRadius: 'var(--r-md)',
-            background: 'rgba(57,135,229,0.08)',
-            border: '1px solid rgba(57,135,229,0.24)',
-            alignItems: 'flex-start',
-          }}
-        >
-          <IconAlert size={17} style={{ color: '#8bbcf3', flexShrink: 0, marginTop: 1 }} />
-          <p className="t-mut" style={{ lineHeight: 1.5 }}>
-            Everything is kept in the academy database, not on this phone. Clearing
-            browser data or switching phones loses nothing —{' '}
-            <strong>sign in again and it is all there</strong>. A backup is still worth
-            downloading now and then as your own copy.
-          </p>
-        </div>
-
-        <div className="row gap-8">
-          <button className="btn btn--primary grow" onClick={backup} disabled={busy}>
-            <IconDownload size={16} /> {busy ? 'Packing…' : 'Download a backup'}
-          </button>
         </div>
       </div>
 

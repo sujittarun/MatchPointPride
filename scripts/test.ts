@@ -16,7 +16,6 @@ import { toStudents } from '../src/lib/mapping'
 import type { EnrollmentRow, MemberRow } from '../src/lib/cloud'
 import { buildEmptyData, buildSeedData } from '../src/lib/seed'
 import { normalise } from '../src/lib/store'
-import { parseCSV, studentsFromCSV, studentsToCSV } from '../src/lib/csv'
 import type { AppData } from '../src/lib/types'
 
 let pass = 0
@@ -341,90 +340,6 @@ ok('seed: all amounts positive', seed.transactions.every((t) => t.amount > 0))
   const mm = moneyByMonth(txns, ['2026-06', '2026-07'])
   eq('moneyByMonth per-month net', mm.map((m) => m.net), [-999, 350])
   eq('moneyByMonth ignores months not requested', moneyByMonth(txns, ['2026-05']).map((m) => m.revenue), [0])
-}
-
-
-/* ================= student spreadsheet ================= */
-{
-  // --- parser edge cases ---
-  eq('csv: simple row', parseCSV('a,b,c'), [['a', 'b', 'c']])
-  eq('csv: quoted comma', parseCSV('"Reddy, A",b'), [['Reddy, A', 'b']])
-  eq('csv: escaped quote', parseCSV('"say ""hi""",b'), [['say "hi"', 'b']])
-  eq('csv: embedded newline', parseCSV('"line1\nline2",b'), [['line1\nline2', 'b']])
-  eq('csv: CRLF rows', parseCSV('a,b\r\nc,d'), [['a', 'b'], ['c', 'd']])
-  eq('csv: BOM stripped', parseCSV('﻿a,b'), [['a', 'b']])
-  eq('csv: blank rows dropped', parseCSV('a,b\n\n\nc,d'), [['a', 'b'], ['c', 'd']])
-  eq('csv: trailing empty cell kept', parseCSV('a,'), [['a', '']])
-
-  // --- round trip ---
-  const seeded = buildSeedData()
-  const text = studentsToCSV(seeded)
-  const parsed = parseCSV(text)
-  eq('csv: header row', parsed[0][0], 'Name')
-  eq('csv: one row per student', parsed.length - 1, seeded.students.length)
-
-  /* The parser is what still exists. It used to hand back a patch for a
-     local draft; now it hands back rows and Settings writes each one to
-     Postgres, so these assert on the parse, not on a mutated document. */
-  const fresh: AppData = JSON.parse(JSON.stringify(buildEmptyData()))
-  const rep = studentsFromCSV(text, fresh)
-  eq('csv: round trip parses everyone', rep.rows?.length ?? 0, seeded.students.length)
-  eq('csv: nothing skipped on round trip', rep.skipped.length, 0)
-  eq('csv: all added, none updated', [rep.added, rep.updated], [seeded.students.length, 0])
-
-  const tricky = seeded.students.find((s) => s.name.includes(' '))!
-  ok('csv: a real name round-trips', (rep.rows ?? []).some((r) => r.name === tricky.name))
-
-  // --- bad input ---
-  const empty: AppData = JSON.parse(JSON.stringify(buildEmptyData()))
-  eq('csv: header only is rejected', studentsFromCSV('Name,Batch', empty).ok, false)
-  eq('csv: garbage is rejected', studentsFromCSV('total nonsense', empty).ok, false)
-  eq('csv: missing required columns rejected',
-    studentsFromCSV('Foo,Bar\n1,2', empty).message.includes('Name'), true)
-
-  // unknown batch is reported, not invented
-  const unknown = studentsFromCSV('Name,Batch\nAsha,Nonexistent Batch', empty)
-  eq('csv: unknown batch skipped', unknown.skipped.length, 1)
-  eq('csv: unknown batch reason', unknown.skipped[0].why.includes('no batch called'), true)
-  eq('csv: no batch invented', empty.batches.length, 6)
-
-  // minimal row uses batch defaults
-  const b0 = empty.batches[0]
-  const minimal = studentsFromCSV(`Name,Batch\nAsha,${b0.name}`, empty)
-  const asha = (minimal.rows ?? []).find((r) => r.name === 'Asha')!
-  eq('csv: minimal row parsed', !!asha, true)
-  eq('csv: fee defaults to the batch fee', asha.monthlyFee, b0.fee)
-  eq('csv: defaults to active', asha.active, true)
-  eq('csv: due day defaults to 1', asha.feeDueDay, 1)
-
-  // dirty values are cleaned, not trusted
-  const dirty = studentsFromCSV(
-    `Name,Batch,Monthly Fee,Fee Due Day,Status,Phone\n` +
-    `Bela,${b0.name},"₹2,500",99,Inactive, 98765 43210 `,
-    empty,
-  )
-  const bela = (dirty.rows ?? []).find((r) => r.name === 'Bela')!
-  eq('csv: currency text parsed to number', bela.monthlyFee, 2500)
-  eq('csv: out-of-range due day clamped to 31', bela.feeDueDay, 31)
-  eq('csv: Inactive status honoured', bela.active, false)
-  eq('csv: phone whitespace stripped', bela.phone, '9876543210')
-
-  // negative fee in a sheet must not become negative data
-  const neg = studentsFromCSV(`Name,Batch,Monthly Fee\nCarl,${b0.name},-900`, empty)
-  eq('csv: negative fee clamped to 0', (neg.rows ?? []).find((r) => r.name === 'Carl')!.monthlyFee, 0)
-
-  // duplicate rows inside one file
-  const dup = studentsFromCSV(`Name,Batch\nDia,${b0.name}\nDia,${b0.name}`, empty)
-  eq('csv: in-file duplicate skipped', dup.skipped.filter((x) => x.why.includes('duplicate')).length, 1)
-  eq('csv: only one of the pair imported', dup.added, 1)
-
-  // blank name row
-  const blank = studentsFromCSV(`Name,Batch\n,${b0.name}`, empty)
-  eq('csv: blank name skipped', blank.skipped[0].why, 'no name')
-
-  // batch matching ignores case and padding
-  const loose = studentsFromCSV(`Name,Batch\nEve,   ${b0.name.toUpperCase()}   `, empty)
-  eq('csv: batch match is case and space tolerant', loose.skipped.length, 0)
 }
 
 

@@ -11,15 +11,15 @@
    `reminder_queue`, `record_fee_payment`. Every rupee in this app comes
    back from one of those, or it is a bug.
 
-   Offline: reads are cached, writes are queued. What is cached is the
-   SERVER'S ANSWER, never a local recalculation of it. That distinction
-   is the whole rule — a cached ₹1,200 is the database's ₹1,200 from an
-   hour ago; a recomputed ₹1,200 is a second implementation waiting to
-   disagree.
+   There is no offline queue. A write that cannot reach the database
+   fails and says so — see the note where the outbox used to be. What
+   this file will never do is compute: a ₹1,200 on screen is the
+   database's ₹1,200, and a recomputed one is a second implementation
+   waiting to disagree.
    ============================================================ */
 
 import type { AttendanceStatus } from './types'
-import { nextDueDate } from './format'
+import { nextDueDate, toISO, todayISO } from './format'
 
 const PROJECT = 'https://ugsklcipzyiogxynshnh.supabase.co'
 // Public by design — it is in every tenant's front end. RLS is the
@@ -30,7 +30,6 @@ const ANON =
 export const TENANT = 'mpp'
 
 const SESSION_KEY = 'mpp.session.v1'
-const OUTBOX_KEY = 'mpp.outbox.v1'
 
 /* ---------------------------------------------------------------
    Session
@@ -650,7 +649,7 @@ export async function reenroll(a: {
     // Same single rule as joining: coming back IS joining again.
     p_renewal_on: nextDueDate(
       a.feeDueDay,
-      a.joinedOn ?? new Date().toISOString().slice(0, 10),
+      a.joinedOn ?? todayISO(),
     ),
     p_plan_months: 1,
     p_custom_amount: a.customFee ?? null,
@@ -713,7 +712,7 @@ export async function saveBatch(a: {
   await request(
     'PATCH',
     `/fee_rules?tenant_id=eq.${TENANT}&batch_id=eq.${batchId}&active=is.true`,
-    { active: false, effective_to: new Date().toISOString().slice(0, 10) },
+    { active: false, effective_to: todayISO() },
   ).catch(() => {})
 
   await request('POST', '/fee_rules', {
@@ -725,7 +724,7 @@ export async function saveBatch(a: {
     monthly_amount: a.fee,
     plan_amounts: {},
     admission_fee: 0,
-    effective_from: new Date().toISOString().slice(0, 10),
+    effective_from: todayISO(),
     active: true,
   })
 
@@ -1145,7 +1144,11 @@ export async function loadEverything(): Promise<{
   // comparisons need the ones before them.
   const since = new Date()
   since.setMonth(since.getMonth() - 12)
-  const sinceISO = since.toISOString().slice(0, 10)
+  /* Local, like every other date this app writes or compares. Whole
+     hours before midnight IST, toISOString() reports yesterday — the
+     bug that once dated every renewal a day early, and the reason no
+     date in this file goes through it. */
+  const sinceISO = toISO(since)
 
   const [centres, batches, members, enrolments, coaches, payments, expenses, attendance, due, settings] =
     await Promise.all([
@@ -1179,84 +1182,19 @@ export async function loadEverything(): Promise<{
   }
 }
 
-/* ---------------------------------------------------------------
-   Outbox
+/* The outbox is gone.
 
-   A write made on a dead train must not be lost, and must not be
-   applied twice. Each entry carries its own id; replay is in order and
-   stops at the first failure so a later write can never overtake an
-   earlier one — order matters when the earlier write is a payment.
-   --------------------------------------------------------------- */
+   Roughly ninety lines implemented a durable write queue — enqueue on
+   failure, replay oldest-first, drop a 4xx rather than block the queue —
+   and nothing in src/ ever called queue() or flush(). Not one write
+   path referenced it.
 
-type Pending = {
-  id: string
-  at: string
-  op: 'rpc' | 'insert'
-  target: string
-  payload: Record<string, unknown>
-}
+   That made the promise at the top of this file false: writes were NOT
+   queued offline. A payment taken on a dead connection threw, showed a
+   toast, and was gone. Code that does nothing is survivable; code that
+   does nothing while the file says it does is how someone decides not
+   to write the retry that was needed.
 
-function outbox(): Pending[] {
-  try {
-    return JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]') as Pending[]
-  } catch {
-    return []
-  }
-}
-
-function setOutbox(q: Pending[]): void {
-  try {
-    localStorage.setItem(OUTBOX_KEY, JSON.stringify(q))
-  } catch {
-    /* nothing useful to do; the write is still in memory for this session */
-  }
-}
-
-export function pendingCount(): number {
-  return outbox().length
-}
-
-export function queue(op: Pending['op'], target: string, payload: Record<string, unknown>): void {
-  const q = outbox()
-  q.push({
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    at: new Date().toISOString(),
-    op,
-    target,
-    payload,
-  })
-  setOutbox(q)
-}
-
-/**
- * Replay queued writes oldest-first. Returns how many went through.
- *
- * A 4xx other than 401 means the server rejected the write on its
- * merits — replaying it forever would block everything behind it, so it
- * is dropped and reported rather than retried.
- */
-export async function flush(): Promise<{ sent: number; failed: Pending[] }> {
-  if (!isSignedIn()) return { sent: 0, failed: [] }
-  const q = outbox()
-  const failed: Pending[] = []
-  let sent = 0
-
-  while (q.length) {
-    const item = q[0]
-    try {
-      await request('POST', item.op === 'rpc' ? `/rpc/${item.target}` : `/${item.target}`, item.payload)
-      q.shift()
-      sent++
-    } catch (e) {
-      const status = e instanceof CloudError ? e.status : 0
-      if (status >= 400 && status < 500 && status !== 401 && status !== 429) {
-        failed.push(q.shift()!) // rejected on its merits — do not block the queue
-        continue
-      }
-      break // network, auth or server trouble: keep the rest and try later
-    }
-  }
-
-  setOutbox(q)
-  return { sent, failed }
-}
+   If offline writes are wanted, they should be built against the real
+   failure — record_fee_payment is not idempotent, so a replayed payment
+   is a second payment, and that is the problem to solve first. */

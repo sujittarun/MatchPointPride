@@ -199,9 +199,16 @@ export function ConfirmPayment({
       toast('That student is not enrolled in the database yet.', 'bad')
       return
     }
+    /* How the money arrived is asked for and must be what is stored.
+       It went in as 'UPI' regardless — so a cash payment at the desk and
+       a bank transfer both read back as UPI in Finance, and the one
+       question the owner is made to answer was thrown away. A screenshot
+       IS a UPI receipt; a call tells us they say they paid but not how,
+       which is 'Other' rather than a guess. */
     const res = await recordFee({
       enrollmentId: student.enrollmentId,
       amount: total,
+      mode: pending ? 'UPI' : method === 'cash' ? 'Cash' : method === 'bank' ? 'Bank' : 'Other',
       note: pending ? 'screenshot attached' : (method ?? undefined),
     })
     if (!res.ok) {
