@@ -58,17 +58,24 @@ money-first; never leave TypeScript and Postgres both computing fees.
    them through `platform_errors()`. No student data is ever sent).
 3. ~~Insert the `mpp` row in `tenants`~~ (done — migration `0006`,
    `modules.booking = false`, `features.publicTimetable = false`).
-4. `src/lib/cloud.ts` — **written**: session, PostgREST reads, outbox,
-   and typed wrappers for `resolve_fee`, `reminder_queue`,
-   `record_fee_payment`, `void_payment`. Nothing in it computes.
-   **Not yet wired** — see "Before the switchover" below. Then delete
-   `selectors.ts:236-468` and the reminder replan in `store.tsx`.
-5. Only then: replace the PIN with a real Supabase session. The PIN can
-   stay as the unlock gesture, but it must sit **on top of** a session,
-   not instead of one — it is compared in JavaScript on a public page.
+4. ~~`src/lib/cloud.ts` — session, PostgREST reads, outbox, and typed
+   wrappers for `resolve_fee`, `reminder_queue`, `record_fee_payment`,
+   `void_payment`~~ (done — wired through `store.tsx`, `mapping.ts` and
+   `ConfirmPayment.tsx`; nothing in it computes. `selectors.ts` lost its
+   money block and `store.tsx` lost the reminder replan).
+5. ~~Replace the PIN with a real Supabase session~~ (done — `vault.ts`.
+   The PIN is not compared to anything: it derives an AES key that
+   decrypts the stored Supabase refresh token, so a wrong one fails the
+   GCM tag check. `changePin()` re-seals the vault; the old screen wrote
+   a field nothing read and reported success anyway).
 6. `seed.ts` becomes a one-shot import script, not runtime state.
+   **Still open.** `buildEmptyData()` is the empty shell the app opens
+   with and is load-bearing; `buildSeedData()` is a demo-data generator
+   that only `scripts/test.ts` calls, kept as a test fixture. Neither is
+   the import the owner actually needs.
 
-Roughly 950 of 8,513 TS lines come out.
+Everything above item 6 is done. What is left in TypeScript computes no
+money: dates, shaping, lookup and charts.
 
 ## Before the switchover
 
@@ -87,9 +94,10 @@ Supabase dashboard — Authentication → Add user, then set
 as that user's **App Metadata** (not User Metadata — `auth_role()` and
 `auth_tenant()` read `app_metadata`, and RLS grants nothing without it).
 
-Until that exists the cloud path cannot be exercised even once, and
-swapping a working local money path for an untested remote one is not a
-trade worth making. `signIn()` checks the tenant and role claims and
+The cloud path is now the only path — the local money logic it would
+have been traded against is gone, so there is nothing left to swap. If
+the app opens empty and sign-in fails, this account and its App Metadata
+are the first thing to check. `signIn()` checks the tenant and role claims and
 fails with a readable message rather than showing an empty app, which is
 what an account created without its metadata would otherwise do.
 

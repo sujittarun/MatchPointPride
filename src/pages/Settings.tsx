@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useStore } from '../lib/store'
+import { changePin } from '../lib/vault'
 import { Field, Sheet } from '../components/ui'
 import { IconAlert, IconLock } from '../components/icons'
 
@@ -73,39 +74,71 @@ export default function Settings() {
   )
 }
 
+/* Changing the PIN re-seals the vault, because the PIN IS the vault key.
+   There is no stored PIN to overwrite.
+
+   What this used to do: compare the current PIN against
+   `settings.passcode` — a field that was always the literal '1234',
+   never loaded from anywhere — then write the new one to React state
+   that nothing persisted and `unlock()` never read. The vault stayed
+   sealed under the old PIN. The owner was told "PIN updated.", closed
+   the app, and could only get back in with the PIN he thought he had
+   just replaced. Silent success, third time in this codebase.
+
+   The current PIN is checked the only way it can be: by whether it
+   opens the vault. No ladder here — this screen is already behind an
+   unlocked session, so guessing at it means holding an unlocked phone,
+   which the login ladder cannot help with either. */
 function PinSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { data, setSettings, toast } = useStore()
+  const { toast } = useStore()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
+  const [busy, setBusy] = useState(false)
 
-  const save = () => {
-    if (current !== data.settings.passcode) {
-      toast('Current PIN is wrong.', 'bad')
-      return
-    }
-    if (!/^\d{4}$/.test(next)) {
-      toast('New PIN must be 4 digits.', 'bad')
-      return
-    }
-    setSettings({ passcode: next })
+  const close = () => {
     setCurrent('')
     setNext('')
-    toast('PIN updated.')
     onClose()
+  }
+
+  const save = async () => {
+    if (busy) return
+    if (!/^(\d{4}|\d{6})$/.test(next)) {
+      toast('New PIN must be 4 or 6 digits.', 'bad')
+      return
+    }
+    // Two key derivations at 600k iterations each — a second or so on a
+    // phone, and long enough that a second tap would otherwise land.
+    setBusy(true)
+    try {
+      const ok = await changePin(current, next)
+      if (!ok) {
+        toast('Current PIN is wrong.', 'bad')
+        return
+      }
+      toast('PIN updated.')
+      close()
+    } catch {
+      // A failure here leaves the OLD vault in place — enrol() writes
+      // once, at the end — so the owner's existing PIN still works.
+      toast('Could not change the PIN. Your current one still works.', 'bad')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
     <Sheet
       open={open}
-      onClose={onClose}
+      onClose={close}
       title="Change PIN"
       footer={
         <>
-          <button className="btn" onClick={onClose}>
+          <button className="btn" onClick={close} disabled={busy}>
             Cancel
           </button>
-          <button className="btn btn--primary" onClick={save}>
-            Update
+          <button className="btn btn--primary" onClick={() => void save()} disabled={busy}>
+            {busy ? 'Changing…' : 'Update'}
           </button>
         </>
       }
@@ -116,17 +149,17 @@ function PinSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
             className="input"
             type="password"
             inputMode="numeric"
-            maxLength={4}
+            maxLength={6}
             value={current}
             onChange={(e) => setCurrent(e.target.value.replace(/\D/g, ''))}
           />
         </Field>
-        <Field label="New PIN" hint="4 digits." span>
+        <Field label="New PIN" hint="4 or 6 digits." span>
           <input
             className="input"
             type="password"
             inputMode="numeric"
-            maxLength={4}
+            maxLength={6}
             value={next}
             onChange={(e) => setNext(e.target.value.replace(/\D/g, ''))}
           />

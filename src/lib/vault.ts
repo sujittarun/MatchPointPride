@@ -173,6 +173,32 @@ export async function reseal(pin: string, refreshToken: string): Promise<void> {
   )
 }
 
+/**
+ * Change the PIN: open the vault with the current one, seal the same
+ * token under the new one.
+ *
+ * Returns false when the current PIN is wrong — which is decided the
+ * only way it can be here, by whether AES-GCM will decrypt. There is
+ * nothing stored to compare against, and that is the point.
+ *
+ * Goes through `enrol` rather than `reseal` deliberately: it draws a
+ * fresh salt, and it records the new PIN's length. `reseal` keeps both,
+ * which is right when the PIN has not changed and wrong when it has —
+ * a six-digit PIN sealed under the old four-digit `len` would draw four
+ * boxes on the keypad and never open.
+ *
+ * Two PBKDF2 passes at 600k iterations, so this takes a second or so on
+ * a phone. Callers should show that they are busy.
+ */
+export async function changePin(current: string, next: string): Promise<boolean> {
+  const v = readVault()
+  if (!v) return false
+  const token = await unlock(current)
+  if (token === null) return false
+  await enrol({ pin: next, refreshToken: token, email: v.email })
+  return true
+}
+
 /** Is WebCrypto usable here? Needs a secure context; GitHub Pages is one. */
 export function available(): boolean {
   return typeof crypto !== 'undefined' && !!crypto.subtle

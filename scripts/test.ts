@@ -17,7 +17,6 @@ import {
 import { toStudents } from '../src/lib/mapping'
 import type { EnrollmentRow, MemberRow } from '../src/lib/cloud'
 import { buildEmptyData, buildSeedData } from '../src/lib/seed'
-import { normalise } from '../src/lib/store'
 import type { AppData } from '../src/lib/types'
 
 let pass = 0
@@ -255,34 +254,11 @@ ok('seed: all amounts positive', seed.transactions.every((t) => t.amount > 0))
   eq('attendance: all-absent month is 0%', staffMonthStats(d2, sid2, m).consistency, 0)
 }
 
-/* ================= migration of retired attendance states ================= */
-{
-  const legacy: any = JSON.parse(JSON.stringify(buildEmptyData()))
-  const sid = legacy.staff[0].id
-  legacy.attendance = [
-    { id: `${sid}__2026-06-01`, staffId: sid, date: '2026-06-01', status: 'half' },
-    { id: `${sid}__2026-06-02`, staffId: sid, date: '2026-06-02', status: 'leave' },
-    { id: `${sid}__2026-06-03`, staffId: sid, date: '2026-06-03', status: 'present' },
-  ]
-  legacy.students = [
-    { id: 'x', name: 'X', batchId: legacy.batches[0].id, phone: '9', joinedOn: '2026-01-01', monthlyFee: 100, feeDueDay: 31, active: true },
-    { id: 'y', name: 'Y', batchId: legacy.batches[0].id, phone: '9', joinedOn: '2026-01-01', monthlyFee: 100, feeDueDay: 0, active: true },
-  ]
-  const out = normalise(legacy)
-  eq('migration: half -> present', out.attendance[0].status, 'present')
-  eq('migration: leave -> absent', out.attendance[1].status, 'absent')
-  eq('migration: present untouched', out.attendance[2].status, 'present')
-  ok('migration: only two states remain',
-    out.attendance.every((a: any) => a.status === 'present' || a.status === 'absent'))
-  eq('migration: fee day 31 is allowed', out.students[0].feeDueDay, 31)
-  eq('migration: fee day 0 clamped to 1', out.students[1].feeDueDay, 1)
-
-  // a document missing whole collections must not explode
-  const sparse: any = { version: 1, batches: [] }
-  const fixed = normalise(sparse)
-  eq('migration: missing collections filled', [fixed.students.length, fixed.reminders.length, fixed.staff.length, fixed.attendance.length, fixed.transactions.length], [0, 0, 0, 0, 0])
-  ok('migration: settings defaulted', fixed.settings.passcode === '1234')
-}
+/* The `normalise()` migration block that stood here is gone with the
+   function. It exercised folding retired attendance states, filling
+   missing collections and clamping the fee day — on a localStorage
+   document that `load()` no longer reads. The test was the only caller
+   left, which is the definition of a test holding dead code upright. */
 
 /* ================= reminder stats ================= */
 {

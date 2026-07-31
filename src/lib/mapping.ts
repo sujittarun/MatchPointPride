@@ -264,13 +264,11 @@ export function assemble(a: {
   expenses: ExpenseRow[]
   attendance: AttendanceRow[]
   due: DueRow[]
-  passcode: string
 }): AppData {
   const batches = toBatches(a.batches, a.fees, a.upi)
   const students = toStudents(a.members, a.enrolments, a.fees)
   return {
     version: 2,
-    settings: { passcode: a.passcode },
     batches,
     students,
     reminders: toReminders(a.due, students),

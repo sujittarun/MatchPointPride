@@ -46,7 +46,8 @@ export interface Student {
   /**
    * Every period they have been with the academy, oldest first. Someone who
    * left and came back has two, so tenure skips the gap instead of counting
-   * it. Always at least one entry after `normalise`.
+   * it. Built by `mapping.ts` from the member's enrolment rows, so there is
+   * always at least one entry for anyone the database returned.
    */
   spells?: Spell[]
   /** Digits only, no country code — used to build the WhatsApp link. */
@@ -203,16 +204,18 @@ export interface Transaction {
   createdAt: string
 }
 
-/* Everything else about the academy is fixed copy — see lib/academy.ts.
-   The only thing worth changing from a phone is the PIN. */
-export interface Settings {
-  /** Client-side gate only — see README § Security. */
-  passcode: string
-}
+/* There is no settings document.
+
+   There used to be one, holding a single field: the PIN. It was never
+   loaded from anywhere — every copy of it was the '1234' literal in
+   seed.ts — and nothing that actually gates the app ever read it. The
+   PIN is the key the session vault is encrypted with (see vault.ts),
+   which is not data about the academy and does not belong in here.
+
+   Everything else about the academy is fixed copy — see lib/academy.ts. */
 
 export interface AppData {
   version: number
-  settings: Settings
   batches: Batch[]
   students: Student[]
   reminders: Reminder[]

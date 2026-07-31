@@ -384,11 +384,15 @@ function PasscodeSheet({
           color: err || locked ? '#ff8f8f' : undefined,
         }}
       >
+        {/* Not "Default is 1234" — there is no default. The PIN is chosen
+            when the phone is set up and it is the key the saved session is
+            encrypted with, so printing a guess for it on a public page was
+            both untrue and the one sentence worth deleting. */}
         {locked
           ? `Too many wrong tries — wait ${Math.ceil(lockMs / 1000)}s`
           : err
             ? 'Wrong PIN — try again'
-            : 'Default is 1234. Change it in Settings.'}
+            : 'The PIN you set up this phone with'}
       </p>
 
       <div className="keypad">

@@ -8,8 +8,8 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { AppData, Settings } from './types'
-import { buildEmptyData, DEFAULT_SETTINGS } from './seed'
+import type { AppData } from './types'
+import { buildEmptyData } from './seed'
 import { reportIssue } from './telemetry'
 import {
   addExpense as cloudAddExpense,
@@ -86,73 +86,25 @@ export function lockedForMs(now = Date.now()): number {
 }
 
 /* ------------------------------------------------------------------
-   Persistence. One JSON document in localStorage.
+   Persistence. There is none here — Postgres is the whole backend.
 
-   This is the whole backend. It is deliberate: the app is a static
-   GitHub Pages site with no server, used by one person. The trade-off
-   is real — data lives in this browser on this device, so the backup in
-   Settings is the only thing standing between the academy and a wiped
-   phone. Everything reads and writes through this module, so swapping
-   in a hosted database later is a change to this file alone.
+   This block used to say the opposite: "one JSON document in
+   localStorage… this is the whole backend", written when it was true
+   and left standing after the cutover, eighty lines above a `load()`
+   that reads nothing from the device. A comment that describes the
+   architecture the file no longer has is worse than no comment: it is
+   the first thing the next reader trusts.
+
+   Every read goes through cloud.ts and every write goes through one of
+   the helpers below, straight to the database and straight back.
+
+   `normalise()` went with it. Fifty-five lines that migrated older
+   localStorage documents in place — folding retired attendance states,
+   de-duplicating open fee reminders, backfilling spells from `joinedOn`,
+   clamping the fee day. All of it operated on a document that `load()`
+   stopped reading; the last thing calling it was its own test. Those
+   migrations are the database's shape now, not this file's job.
    ------------------------------------------------------------------ */
-
-/** Fill in defaults and migrate older documents in place. Exported so the
-    migration path is testable without a browser. */
-export function normalise(parsed: AppData): AppData {
-  parsed.settings = { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) }
-  parsed.students ??= []
-  parsed.reminders ??= []
-  parsed.staff ??= []
-  parsed.attendance ??= []
-  parsed.transactions ??= []
-  parsed.batches ??= []
-
-  // Attendance used to have four states. Fold the retired ones in:
-  // a half day was worked, a leave day was not.
-  for (const rec of parsed.attendance) {
-    const st = rec.status as string
-    if (st === 'half') rec.status = 'present'
-    else if (st === 'leave') rec.status = 'absent'
-  }
-
-  /* A student may only ever have one open fee reminder. An earlier build
-     could create duplicates when the sync ran twice; fold any away here so
-     outstanding totals aren't double-counted. */
-  const seenOpenFee = new Set<string>()
-  parsed.reminders = parsed.reminders.filter((r) => {
-    if (r.kind !== 'fee' || (r.status !== 'pending' && r.status !== 'sent')) return true
-    if (seenOpenFee.has(r.studentId)) return false
-    seenOpenFee.add(r.studentId)
-    return true
-  })
-
-  /* Give every student a membership history. Records written before spells
-     existed get one built from `joinedOn`; for someone already inactive we
-     cannot know when they left, so their last recorded fee month is used as
-     the best available estimate. */
-  for (const s of parsed.students) {
-    if (Array.isArray(s.spells) && s.spells.length > 0) continue
-    if (s.active) {
-      s.spells = [{ from: s.joinedOn }]
-    } else {
-      const lastPaid = parsed.transactions
-        .filter((t) => t.source === 'student_fee' && t.studentId === s.id)
-        .map((t) => t.date)
-        .sort()
-        .pop()
-      s.spells = [{ from: s.joinedOn, to: lastPaid ?? s.joinedOn }]
-    }
-  }
-
-  // Keep the fee day a real day of the month. Short months are handled
-  // when the due date is built, not by rejecting the 29th–31st.
-  for (const s of parsed.students) {
-    if (!(s.feeDueDay >= 1 && s.feeDueDay <= 31)) {
-      s.feeDueDay = Math.min(31, Math.max(1, Math.round(s.feeDueDay) || 1))
-    }
-  }
-  return parsed
-}
 
 interface LoadResult {
   data: AppData
@@ -197,7 +149,6 @@ export interface Toast {
 interface Ctx {
   data: AppData
   update: (fn: (draft: AppData) => void) => void
-  setSettings: (patch: Partial<Settings>) => void
   authed: boolean
   login: (code: string) => Promise<boolean>
   /** First run on this device: email + password once, then a PIN. */
@@ -304,7 +255,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setLoading(true)
       const raw = await loadEverything()
       centreId.current = raw.centreId
-      setData((prev) => assemble({ ...raw, passcode: prev.settings.passcode }))
+      setData(assemble(raw))
       setLoadError(null)
     } catch (err) {
       reportIssue('load', err)
@@ -350,16 +301,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      queue now arrives from reminder_queue() with refresh(), so there is
      nothing to keep in step. */
 
-  const setSettings = useCallback(
-    (patch: Partial<Settings>) => {
-      update((d) => {
-        d.settings = { ...d.settings, ...patch }
-      })
-    },
-    [update],
-  )
-
-
   /* The PIN no longer proves anything by itself — it decrypts the
      Supabase refresh token this device was enrolled with, and that token
      is what the platform actually trusts. A wrong PIN fails to decrypt;
@@ -399,7 +340,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (count >= LOCKOUTS_MS.length + 2) vault.forget()
       return false
     },
-    [data.settings.passcode],
+    // Nothing from `data` here: the PIN is the vault key, not a field
+    // in the document. This list used to name `data.settings.passcode`,
+    // which rebuilt the callback on every load for a value it no longer
+    // read.
+    [],
   )
 
   /* Student writes.
@@ -690,13 +635,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<Ctx>(
     () => ({
-      data, update, setSettings,
+      data, update,
       authed, login, enrol, enrolled: vault.isEnrolled(), logout, toasts, toast,
       loading, loadError, refresh, saveStudent,
       saveBatch, removeBatch, recordFee, addRevenue, addExpense,
       saveStaff, removeStaff, markStaffDay, logReminderSent, removeEntry,
     }),
-    [data, update, setSettings,
+    [data, update,
      authed, login, enrol, logout, toasts, toast, loading, loadError, refresh, saveStudent,
      saveBatch, removeBatch, recordFee, addRevenue, addExpense,
      saveStaff, removeStaff, markStaffDay, logReminderSent, removeEntry],

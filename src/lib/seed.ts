@@ -18,10 +18,6 @@ import {
   uid,
 } from './format'
 
-export const DEFAULT_SETTINGS = {
-  passcode: '1234',
-}
-
 /* Deterministic PRNG so the demo dataset looks identical on every
    first load (and so charts are stable while eyeballing the UI). */
 function rng(seed: number) {
@@ -328,7 +324,6 @@ export function buildSeedData(): AppData {
 
   return {
     version: 1,
-    settings: { ...DEFAULT_SETTINGS },
     batches,
     students,
     reminders,
@@ -342,7 +337,6 @@ export function buildSeedData(): AppData {
 export function buildEmptyData(): AppData {
   return {
     version: 1,
-    settings: { ...DEFAULT_SETTINGS },
     batches: makeBatches(),
     students: [],
     reminders: [],

@@ -4,17 +4,17 @@ A phone-first operations console for **Match Point Pride Badminton Academy** —
 Road 30, beside Sam Houston Intl School, Narsingi, Hyderabad — built for one person to
 run the academy from their phone.
 
-> **Status: standalone, being migrated.** This is tenant `mpp` of Academy Manager, but it
-> does not talk to the platform database yet. It stores everything in `localStorage`, and
-> its fee, arrears and reminder-timing rules are in TypeScript — which the platform's house
-> rule forbids, because those rules already exist as SQL functions every other client
-> calls. See `CLAUDE.md` for the violation and the migration order. **Do not add new money
-> logic to this repo.**
+> **Status: on the platform.** This is tenant `mpp` of Academy Manager and it reads and
+> writes the platform database. Every money rule — the fee chain, arrears coverage, the
+> renewal roll-forward, the reminder ladder — is a SQL function shared with every other
+> client, so a parent's WhatsApp message and this screen cannot quote different amounts.
+> See `CLAUDE.md`. **Do not add new money logic to this repo:** if a number is needed, add
+> it to the SQL function and read it.
 
 **Live:** https://sujittarun.github.io/MatchPointPride/
 
-A public landing page, then a passcode gate, then four things: batches, reminders,
-staff attendance and money.
+A public landing page, then a PIN that unlocks this phone's saved sign-in, then four
+things: batches, reminders, staff attendance and money.
 
 ---
 
@@ -34,16 +34,15 @@ then left alone, so it isn't cluttering a settings form on a phone. Setting
 `public/court.jpg`; replace that file and nothing else needs touching.
 
 ### Settings
-Three things, because that's all a single operator needs to touch from a phone:
+One thing, because it is the only thing a single operator needs to touch from a phone:
+the **PIN**. Change it, or log out. There is no default — you choose it when you set the
+phone up, and changing it re-encrypts the saved session under the new one.
 
-- **PIN** — change it, or log out. Default `1234`.
-- **Student sheet** — export every student to CSV (opens in Excel, Numbers or Google
-  Sheets), edit in the spreadsheet, import it back. Only `Name` and `Batch` are required;
-  a student already in that batch is **updated rather than duplicated**, so the
-  export → edit → import loop is safe to repeat. Unknown batches are never invented —
-  those rows are reported with their row number and the reason. Export with no students
-  to get a blank template.
-- **Backup & restore** — the full JSON document, and the danger-zone resets.
+Export, import and backup were removed rather than kept. A backup downloaded to a phone is
+a file of student names and parents' phone numbers, stale the moment it is written; the
+records live in Postgres and are backed up there. Import was worse — it wrote React state
+and nothing else, so the next read from the database replaced whatever it loaded, and the
+owner was told "12 students imported" having imported nothing.
 
 ### 1. Batches
 Add, edit and delete batches. Ships with the six the academy actually runs — four kids
@@ -60,10 +59,12 @@ tap.
 behind for a month when no fee payment is recorded *for* that month, and the reminder
 appears on its own. **Nothing is ever sent automatically** — you send each one.
 
-> This derivation is currently done in TypeScript. It duplicates `reminder_queue()` and
-> `apply_payment_coverage()` in Postgres, which every other tenant uses and which encode a
-> reminder ladder this app does not follow (−2 heads-up, 0 due, +5 first chase, +7–14
-> daily, stop at +15). It is described below as it behaves *today*, not as it should be.
+> The list is `reminder_queue()`'s answer, recomputed on every read, and it follows the
+> platform ladder: −2 heads-up, 0 due, +5 first chase, +7–14 daily, **stop at +15** —
+> past which it is manual only. Nothing is written to the list locally, which is why
+> one-off custom reminders and cancel-on-a-reminder are not offered: they would vanish at
+> the next refresh. A reminder ends when the fee is recorded or the student is
+> discontinued, both of which are real rows.
 
 **Arrears go out as one message.** A student two months behind gets a single reminder for
 both — *"…fee for June and July comes to ₹4,400"* — not two separate chases. Marking it
@@ -75,7 +76,8 @@ July settles June while the cash still lands in July's revenue.
 Each reminder sends over **WhatsApp** (`wa.me` deep link with the message pre-filled),
 SMS or a phone call. Every send is logged: channel, timestamp, and a running send count,
 so a reminder that took three nudges says so. The message comes from an editable template
-with `{student} {guardian} {amount} {due} {batch} {slot} {academy} {owner}` placeholders.
+from a template in `src/lib/academy.ts` with `{student} {guardian} {amount} {months}
+{due} {batch} {slot} {academy} {owner}` placeholders.
 
 Tracking covers outstanding amount, how many are waiting on you, **response rate**
 (of reminders actually sent, how many ended in payment) and a six-month sent-vs-paid chart.
@@ -105,44 +107,51 @@ reminders too, so someone who has stopped coming doesn't sit in the overdue list
 
 ## Testing
 
-`npm run build` typechecks the whole app. Beyond that the project has been through an
-end-to-end regression covering the logic layer (214 assertions over date arithmetic,
-money formatting, collection rate, attendance maths, reminder stats, the storage
-migration path, arrears/dues derivation and CSV round-tripping) and a UI pass on a 375×812 viewport: negative and
-malformed input on every form, referential integrity across deletes, the
-member-discontinue flow, corrupt and unreadable saved data, malformed backup and
-spreadsheet imports, long-string layout overflow, and the empty state of every screen.
+`npm test` runs 249 assertions over what is left in TypeScript: date arithmetic, the
+first-fee and renewal date rules, money formatting, attendance maths, reminder stats and
+row shaping. `npm run build` typechecks the whole app.
+
+**It cannot cover the money, because the money is not here.** That lives in
+`scripts/regression.sql`, which exercises the real fee chain, the real ladder and the real
+roll-forward against live data inside a transaction it rolls back:
+
+```bash
+AcademyManager/scripts/migrate.sh --dry-run --scope mpp MatchPointPride/scripts/regression.sql
+```
+
+Read the `REGRESSION PASS | failures:` line, not the exit code — the file signals its
+result by raising, because raising is what rolls the transaction back. The runner prints
+`✗ FAILED` on a **passing** run. That is the design, not a fault.
+
+Beyond that, a UI pass on a 375×812 viewport: negative and malformed input on every form,
+referential integrity across deletes, the member-discontinue flow, long-string layout
+overflow, and the empty state of every screen.
 
 ---
 
-## Three things to know before relying on it
+## Two things to know before relying on it
 
-**0. The money rules are in the wrong place.** They belong in Postgres and will move there;
-until they do, this app can disagree with Academy Manager about what a student owes.
+**1. The data is in Postgres, and only in Postgres.** There is no local copy — no cached
+document, no draft, no backup file. The app opens empty and fills from the database as soon
+as a session exists, because a stale local copy is a guess dressed as a fact. Clearing
+browser data or switching phones costs you the saved sign-in, not the academy's records:
+sign in again with your email and password, choose a PIN, and everything is there.
 
-**1. Data lives in your browser, on your phone.** GitHub Pages serves static files and has
-no server or database, so everything is stored in `localStorage`. Clearing browser data,
-using a different phone, or switching from Chrome to Safari means the data isn't there.
+What still lives on the device, and should: the sealed session vault, the PIN attempt
+ladder, and payment screenshots pending upload. None of those are academy records.
 
-> **Download a backup from Settings regularly.** It's a single JSON file and restores onto
-> any device. This is the one habit the app depends on.
+**2. The PIN is not compared to anything — it is the key.** You sign in with email and
+password once per device. The refresh token that comes back is encrypted with a key derived
+from your PIN (PBKDF2-HMAC-SHA256, 600k iterations) and kept on the phone; every later visit
+the PIN decrypts it and swaps it for a fresh session. A wrong PIN fails to decrypt, so there
+is no equality test to skip past in a console. Row Level Security trusts the session token;
+the PIN never reaches the database.
 
-Every read and write goes through `src/lib/store.tsx`, so moving to a hosted database later
-(Supabase, Firebase) is a change to that one file — the rest of the app doesn't know where
-its data comes from.
-
-**2. The PIN is not access control — yet.** The page is public and the PIN is compared in
-JavaScript, so it only stops a casual passer-by on a shared phone. Wrong entries now lock
-the pad with an escalating delay that survives a reload, which slows a person down; it does
-not stop one.
-
-The PIN is worth keeping — for a single operator it is the right unlock gesture. But it has
-to sit **on top of** a real session, not instead of one: sign in once per device against
-Academy Manager's auth, then the PIN unlocks the stored session on every later visit, the
-way a banking app does. Row Level Security trusts the session token; the PIN never reaches
-the database. Until that lands, nothing sensitive should go in here.
-
-See `docs/data-model.sql` for what this front-end needs from the shared database.
+**Honest limit:** four digits is ten thousand guesses, and against someone holding the
+unlocked phone and attacking the stored blob offline, PBKDF2 buys hours rather than safety.
+What protects a short PIN is that guessing has to go through the app, where the attempt
+ladder escalates and, past the cap, the vault is wiped and you re-enrol with your password.
+Six digits is offered for anyone who wants the extra two orders of magnitude.
 
 ---
 
@@ -156,8 +165,8 @@ centred column rather than stretching — deliberate, not unfinished.
 Dark-committed, on a cool near-black (`#141A21`) with a shuttle-lime accent (`#C8FF4D`).
 Tokens live in `src/styles/tokens.css`; a light theme would be a token swap, not a rewrite.
 
-**Charts** are hand-rolled SVG — no charting dependency, so the whole app is 77 kB gzipped
-with React as the only runtime dependency. The categorical series colours were validated
+**Charts** are hand-rolled SVG — no charting dependency, so the whole app is about 96 kB
+gzipped (90 kB of JavaScript, 7 kB of CSS) with React as the only runtime dependency. The categorical series colours were validated
 against the actual chart surface for lightness band, chroma floor, colour-vision-deficiency
 separation, normal-vision separation and 3:1 contrast — all six slots pass. Throughout:
 one value axis per chart (never two scales), fixed slot order (never cycled), a legend
@@ -184,17 +193,15 @@ npm run build
 Pushing to `main` builds and deploys via `.github/workflows/deploy.yml`. Set
 **Settings → Pages → Source** to **GitHub Actions** once.
 
-The app opens with a demo dataset so the charts have something to say. When you're ready
-for real data, **Settings → Clear demo data and start fresh** wipes it and keeps the six
-batches.
-
-Default passcode is **1234** — change it in Settings.
+The app opens empty and fills from the platform database once you have signed in. There is
+no demo dataset and no default PIN — the first run on a phone asks for the academy email
+and password, then the PIN you want to unlock it with afterwards.
 
 ## Layout
 
 ```
 src/
-  lib/          types · localStorage store · derived analytics · date+money helpers · seed
+  lib/          types · cloud reads/writes · row shaping · store · date helpers · vault
   components/   ui primitives (sheet, stat, confirm) · SVG icons · charts
   pages/        Landing · Dashboard · Batches · Reminders · Staff · Finance · Settings
   styles/       tokens.css · global.css · landing.css
