@@ -27,10 +27,14 @@ export default function Landing() {
     <div className="lp">
       <header className="hero">
         <div className="hero__media">
+          {/* `fetchpriority` lowercase, not the React 19 `fetchPriority`
+              casing: on React 18 that prop is unrecognised, so it is
+              passed straight through to the DOM AND logged as an error on
+              every render of the first screen the owner sees. */}
           <img
             src={COURT}
             alt={`Indoor badminton courts at ${A.name}`}
-            fetchPriority="high"
+            {...{ fetchpriority: 'high' }}
             decoding="async"
           />
         </div>

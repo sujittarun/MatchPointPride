@@ -19,7 +19,6 @@ import {
   todayISO,
 } from '../lib/format'
 import {
-  ATTRIBUTABLE_MONTHS,
   collectionRate,
   expenseByCategory,
   moneyByMonth,
@@ -379,7 +378,6 @@ function TxnSheet({
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(todayISO())
   const [note, setNote] = useState('')
-  const [forMonth, setForMonth] = useState(currentMonthKey())
   const [key, setKey] = useState<string | null>(null)
 
   const openKey = type === null ? null : `${type}:${month}`
@@ -389,7 +387,6 @@ function TxnSheet({
       setTab(type)
       setAmount('')
       setNote('')
-      setForMonth(currentMonthKey())
       // Default the date into the month being viewed.
       const today = todayISO()
       setDate(today.startsWith(month) ? today : `${month}-01`)
@@ -401,7 +398,6 @@ function TxnSheet({
   const owedMonths = chosenStudent ? unpaidMonthsFor(data, chosenStudent) : []
   /* Offer every month in the arrears window so a mistake can be corrected,
      but mark which are actually outstanding. */
-  const monthChoices = lastMonths(ATTRIBUTABLE_MONTHS)
 
   const save = async () => {
     const amt = Number(amount)
@@ -526,7 +522,15 @@ function TxnSheet({
 
             {source === 'student_fee' && (
               <>
-                <Field label="Student" hint="Clears that month from their dues." span>
+                <Field
+                  label="Student"
+                  hint={
+                    owedMonths.length > 1
+                      ? `Goes against the oldest of ${owedMonths.length} unpaid months.`
+                      : 'Clears that month from their dues.'
+                  }
+                  span
+                >
                   <select
                     className="select"
                     value={studentId}
@@ -535,9 +539,6 @@ function TxnSheet({
                       setStudentId(id)
                       const s = activeStudents.find((x) => x.id === id)
                       if (s && !amount) setAmount(String(s.monthlyFee))
-                      // Default to the oldest month they still owe.
-                      const owed = s ? unpaidMonthsFor(data, s) : []
-                      setForMonth(owed[0] ?? currentMonthKey())
                     }}
                   >
                     <option value="">— not linked to a student —</option>
@@ -549,30 +550,20 @@ function TxnSheet({
                   </select>
                 </Field>
 
-                {chosenStudent && (
-                  <Field
-                    label="Fee for"
-                    hint={
-                      owedMonths.length > 1
-                        ? `${chosenStudent.name} owes ${owedMonths.length} months.`
-                        : undefined
-                    }
-                    span
-                  >
-                    <select
-                      className="select"
-                      value={forMonth}
-                      onChange={(e) => setForMonth(e.target.value)}
-                    >
-                      {monthChoices.map((m) => (
-                        <option key={m} value={m}>
-                          {monthLabel(m)}
-                          {owedMonths.includes(m) ? ' — unpaid' : ' — already paid'}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                )}
+                {/* There was a "Fee for" month picker here. It was read by
+                    nothing: `save()` calls recordFee, which calls
+                    record_fee_payment, which takes a COUNT of months and
+                    derives the period from renewal_on — there is no "which
+                    month" parameter, deliberately, because
+                    apply_payment_coverage() owns coverage.
+
+                    So the owner chose "June — unpaid", the money landed
+                    wherever the server put it, and the two agreed only by
+                    coincidence. A control that decides nothing while
+                    looking like it decides something is worse than no
+                    control: it is the fee arithmetic moving back into the
+                    client, badly. The arrears count moved into the hint
+                    above, which is the part that was true. */}
               </>
             )}
           </>
