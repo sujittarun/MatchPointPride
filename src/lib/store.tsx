@@ -524,6 +524,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [write],
   )
 
+  /* Has anything been paid since this spell began?
+     Measured from the spell, not from their first ever payment: a
+     student who trained for two years, left, and came back is unpaid
+     again, and their fee day should re-derive like anyone starting. */
+  const paidThisSpell = useCallback(
+    (d: AppData, studentId: string | undefined, from: string | undefined) => {
+      if (!studentId || !from) return false
+      return d.transactions.some(
+        (t) => t.type === 'revenue' && t.source === 'student_fee' &&
+               t.studentId === studentId && t.date >= from,
+      )
+    },
+    [],
+  )
+
   const saveStudent = useCallback(
     async (input: {
       id?: string
@@ -563,6 +578,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             note: input.note,
             feeDueDay: input.feeDueDay,
             currentRenewalOn: input.currentRenewalOn,
+            /* Which fee-day rule applies turns on whether any money has
+               arrived in this spell. The store is the only place that
+               knows both the student and the payment record, so it
+               decides here rather than leaving cloud.ts to guess. */
+            joinedOn: input.joinedOn,
+            settledThisSpell: paidThisSpell(data, input.id, input.joinedOn),
           })
           /* Not gated on a previous status. The Remove button, the CSV
              import and the student page all call this with active:false
@@ -636,7 +657,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [refresh],
+    [refresh, paidThisSpell, data],
   )
 
   /* One-time device setup: the only moment a password is involved. It

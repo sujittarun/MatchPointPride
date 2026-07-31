@@ -527,22 +527,42 @@ export async function updateStudent(a: {
   feeDueDay?: number
   /** What it is today, so an unchanged day is left alone. */
   currentRenewalOn?: string
+  /** The start of their current spell, to re-derive from when unpaid. */
+  joinedOn?: string
+  /** Has any money arrived in THIS spell? Decides which rule applies. */
+  settledThisSpell?: boolean
+  /** Only meaningful while unpaid: did they settle on the day? */
+  settledOnJoining?: boolean
 }): Promise<void> {
   await updateMemberDetails(a)
 
-  /* Moving the billing day.
-     Anchored to their CURRENT due date, not to today, so the new day is
-     the next one on or after what they already owe. That direction is
-     deliberate: it can never pull a due date backwards, so correcting a
-     fee day cannot turn a paid-up student into an overdue one, and it
-     cannot invent a chase. */
+  /* Moving the billing day. One rule, two situations, and telling them
+     apart is the whole of it:
+
+     Nothing paid this spell — they are still being SET UP. The current
+     renewal was derived from the fee day being replaced, so nudging it
+     forward compounds a number that is about to be wrong. Re-derive
+     from the day they joined, exactly as registering them would.
+
+     Something paid — they are ESTABLISHED and mid-cycle. Move to the
+     next occurrence on or after what they already owe, never earlier,
+     so correcting a typo cannot pull a paid-up student backwards into a
+     chase they do not deserve.
+
+     Conflating the two is how "change the fee day to the 1st" on a
+     student registered today produced a first fee in October: set up
+     with the 5th, renewal computed to September, then nudged past it. */
   const patch: Record<string, unknown> = {
     batch_id: a.batchId,
     custom_amount: a.customFee ?? null,
   }
-  if (a.feeDueDay && a.currentRenewalOn) {
-    const moved = nextDueDate(a.feeDueDay, a.currentRenewalOn)
-    if (moved !== a.currentRenewalOn) patch.renewal_on = moved
+  if (a.feeDueDay) {
+    const moved = a.settledThisSpell
+      ? (a.currentRenewalOn ? nextDueDate(a.feeDueDay, a.currentRenewalOn) : null)
+      : (a.joinedOn
+          ? (a.settledOnJoining ? nextDueDate : firstDueDate)(a.feeDueDay, a.joinedOn)
+          : null)
+    if (moved && moved !== a.currentRenewalOn) patch.renewal_on = moved
   }
 
   await request('PATCH', `/enrollments?id=eq.${a.enrollmentId}&tenant_id=eq.${TENANT}`, patch)
