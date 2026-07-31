@@ -128,9 +128,27 @@ rows behind them.
 
 ```bash
 npm install && npm run dev
-npm test        # 214 assertions
-npm run simulate  # narrated life-cycle, 29 assertions
+npm test        # 232 assertions
 ```
+
+`npm test` covers the TypeScript that is left — shaping, dates, lookup.
+It cannot cover the money, because the money is not here any more. That
+lives in `scripts/regression.sql`, which exercises the real fee chain,
+the real ladder and the real roll-forward against live data inside a
+transaction it rolls back:
+
+```bash
+AcademyManager/scripts/migrate.sh --dry-run --scope mpp MatchPointPride/scripts/regression.sql
+```
+
+Read the `REGRESSION PASS | failures:` line, not the exit code. The file
+signals its result by raising, because raising is what rolls the
+transaction back — so the runner prints `✗ FAILED` on a **passing** run
+and writes nothing to the ledger. That is the design, not a fault.
+
+The old `npm run simulate` was deleted with the local money logic it
+simulated — a narrated life cycle over arithmetic that no longer runs
+here proved only that the simulation agreed with itself.
 
 Phone-first: bottom tab bar, bottom-sheet modals, 44px targets. Designed
 at 375×812 — check there, not on a desktop.

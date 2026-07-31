@@ -72,8 +72,14 @@ begin
   -- ============ E. the chase ladder, rung by rung ============
   -- one student per offset, then ask reminder_queue which it returns
   for n in select unnest(array[-3,-2,-1,0,1,4,5,6,7,14,15,20]) loop
+    -- A FIXED-WIDTH phone. It used to be '90000100'||abs(n), which is ten
+    -- digits for a two-digit offset and NINE for a single-digit one — and
+    -- reminder_queue blocks anything under ten as 'missing_phone'. So rungs
+    -- -2, 0, +5 and +7 were being asserted present while silently blocked,
+    -- and the ladder assertions below passed without ever proving that the
+    -- rungs which must SEND actually can.
     insert into members (tenant_id,name,parent_phone,program,joined,status,venue)
-    values ('mpp','ZZ Rung '||n,'90000100'||abs(n),'badminton',today-60,'active','narsingi')
+    values ('mpp','ZZ Rung '||n,'90000'||lpad(abs(n)::text,5,'0'),'badminton',today-60,'active','narsingi')
     returning id into m_unpaid;
     insert into enrollments (tenant_id,member_id,centre_id,batch_id,sport,plan_months,joined_on,renewal_on,status)
     values ('mpp',m_unpaid,v_centre,v_batch,v_sport,1,today-60,today - n,'active');
@@ -102,6 +108,14 @@ begin
   select count(*) into n from reminder_queue('mpp') q join members m on m.id=q.member_id
    where m.name like 'ZZ Rung %' and q.days_since >= 15 and q.blocked_reason <> 'overdue_15_days';
   if n <> 0 then fails := array_append(fails, 'E3 a 15+ day row was not blocked'); end if;
+
+  -- ...and everything BELOW +15 must be genuinely sendable. Appearing in
+  -- the queue is not the same as going out: a blocked row is returned so
+  -- the owner can see why it is stuck, and sends nothing. Counting rows
+  -- cannot tell those apart, which is how the fixture bug above hid.
+  select count(*) into n from reminder_queue('mpp') q join members m on m.id=q.member_id
+   where m.name like 'ZZ Rung %' and q.days_since in (-2,0,5,7,14) and q.blocked_reason is not null;
+  if n <> 0 then fails := array_append(fails, ('E4 ' || n || ' sendable rung(s) blocked')); end if;
 
   -- ============ F. blocked reasons ============
   insert into members (tenant_id,name,parent_phone,program,joined,status,venue)
