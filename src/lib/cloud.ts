@@ -19,7 +19,7 @@
    ============================================================ */
 
 import type { AttendanceStatus } from './types'
-import { nextDueDate, renewalAfterFeeDayChange, toISO, todayISO } from './format'
+import { firstDueDate, renewalAfterFeeDayChange, toISO, todayISO } from './format'
 
 const PROJECT = 'https://ugsklcipzyiogxynshnh.supabase.co'
 // Public by design — it is in every tenant's front end. RLS is the
@@ -450,7 +450,7 @@ export async function addStudent(a: {
   const memberId = members?.[0]?.id
   if (!memberId) throw new CloudError('The student was not created.', 500)
 
-  const firstDue = nextDueDate(a.feeDueDay, a.joinedOn)
+  const firstDue = firstDueDate(a.feeDueDay, a.joinedOn)
   const enrolments = (await request('POST', '/enrollments', {
     tenant_id: TENANT,
     member_id: memberId,
@@ -628,10 +628,7 @@ export async function reenroll(a: {
     p_sport: 'badminton',
     p_joined_on: a.joinedOn ?? null,
     // Same single rule as joining: coming back IS joining again.
-    p_renewal_on: nextDueDate(
-      a.feeDueDay,
-      a.joinedOn ?? todayISO(),
-    ),
+    p_renewal_on: firstDueDate(a.feeDueDay, a.joinedOn ?? todayISO()),
     p_plan_months: 1,
     p_custom_amount: a.customFee ?? null,
   })

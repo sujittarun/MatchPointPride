@@ -218,9 +218,42 @@ export function clampDay(v: string | number): number {
  */
 export const FIRST_FEE_WARN_DAYS = 20
 
+/**
+ * Closer than this and the first fee is not a fee, it is a joining
+ * charge with a date on it — so it moves to the next month instead.
+ *
+ * Ten, because the owner's own examples fix it: registering on 31 July
+ * with a fee day of the 1st must bill in September, not August (one
+ * day); with the 5th it must not bill on 5 August (five days); with the
+ * 15th it must bill on 15 August and only WARN (fifteen days). That
+ * puts the line above 5 and at or below 15, and 10 is the round number
+ * in between.
+ *
+ * The two numbers do different jobs, which is why there are two. This
+ * one MOVES the date, silently, because a fee three days after signing
+ * up is never what anyone meant. The warning below does not move
+ * anything — it tells the owner a legitimate date is soon, so they can
+ * decide. An earlier version had only the move, hidden, and every
+ * output looked like a bug; a later one had only the warning, and left
+ * the absurd dates in place. Both are needed, and the gap between them
+ * is the band where the date is defensible but worth mentioning.
+ */
+export const FIRST_FEE_MIN_GAP = 10
+
+/**
+ * When their first fee lands: the fee day on or after joining, pushed a
+ * month if that is sooner than `FIRST_FEE_MIN_GAP` days away.
+ */
+export function firstDueDate(feeDay: number, joinedOn: string): string {
+  const first = nextDueDate(feeDay, joinedOn)
+  if (daysBetween(joinedOn, first) >= FIRST_FEE_MIN_GAP) return first
+  // From the day after, so the next occurrence is next month's.
+  return nextDueDate(feeDay, addDays(first, 1))
+}
+
 /** How long after joining their first fee lands. */
 export function daysToFirstFee(feeDay: number, joinedOn: string): number {
-  return daysBetween(joinedOn, nextDueDate(feeDay, joinedOn))
+  return daysBetween(joinedOn, firstDueDate(feeDay, joinedOn))
 }
 
 /**
@@ -281,6 +314,8 @@ export function renewalAfterFeeDayChange(a: {
   joinedOn?: string
   /** Has any money arrived this spell? Decides which of the two rules applies. */
   settledThisSpell?: boolean
+  /** Injectable only so the tests are not a different program in March. */
+  today?: string
 }): string | null {
   /* No current date means there is nothing to compare against, so "did
      this change?" cannot be answered and any value written is a guess.
@@ -308,6 +343,21 @@ export function renewalAfterFeeDayChange(a: {
        the 2nd, billed on the 5th, moved to the 1st. A renewal that
        predates the enrolment is not a date, it is a contradiction. */
     if (a.joinedOn && moved < a.joinedOn) moved = nextDueDate(a.feeDay, a.joinedOn)
+    /* And the same minimum gap registration uses. Editing the day to the
+       1st on the 31st must land where registering with the 1st on the
+       31st lands, or the two screens quietly disagree about the same
+       student.
+
+       Measured from the later of today and joining. Today, because that
+       is when the change is being made; joining, because a student
+       starting in September should not owe two days into their first
+       week just because the edit happened in July. For the ordinary
+       case — joined already — the two are the same and this is today. */
+    const today = a.today ?? todayISO()
+    const from = a.joinedOn && a.joinedOn > today ? a.joinedOn : today
+    if (moved > from && daysBetween(from, moved) < FIRST_FEE_MIN_GAP) {
+      moved = nextDueDate(a.feeDay, addDays(moved, 1))
+    }
   }
   return moved === a.currentRenewalOn ? null : moved
 }

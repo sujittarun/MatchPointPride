@@ -3,7 +3,8 @@
 import {
   addDays, currentMonthKey, dateLabelFull, daysBetween, daysInMonth, dueLabel,
   clampDay, fromISO, inr, initials, isSunday, lastMonths, monthDates, monthLabel,
-  dueDateFor, daysToFirstFee, FIRST_FEE_WARN_DAYS, nextDueDate, ordinal, renewalAfterFeeDayChange,
+  dueDateFor, daysToFirstFee, FIRST_FEE_MIN_GAP, FIRST_FEE_WARN_DAYS, firstDueDate,
+  nextDueDate, ordinal, renewalAfterFeeDayChange,
   shiftMonth, toISO, todayISO, uid, weekday,
 } from '../src/lib/format'
 import {
@@ -492,11 +493,20 @@ eq('joined the 29th, fee day the 1st',  nextDueDate(1,  '2026-07-29'), '2026-08-
 eq('joined the 5th, fee day the 1st',   nextDueDate(1,  '2026-07-05'), '2026-08-01')
 eq('short month still clamps',          nextDueDate(31, '2026-01-28'), '2026-01-31')
 
-/* The warning fires exactly when the gap is under twenty days — the
-   owner's number, chosen because a parent who signs up on Tuesday
-   should not be surprised to hear from us on Friday. */
-eq('three days out warns',      daysToFirstFee(1,  '2026-07-29') < FIRST_FEE_WARN_DAYS, true)
-eq('the same day warns',        daysToFirstFee(15, '2026-06-15') < FIRST_FEE_WARN_DAYS, true)
+/* Two numbers, two jobs. Under FIRST_FEE_MIN_GAP the date MOVES and
+   there is nothing to warn about; between the two it stays and is
+   mentioned; past FIRST_FEE_WARN_DAYS it is silent.
+
+   These two used to assert a warning on a 3-day and a same-day gap.
+   Both now move to the next month instead, which is the point: the
+   cases absurd enough to warn about are the ones worth fixing rather
+   than announcing. */
+eq('three days out moves, so it is quiet',
+   daysToFirstFee(1, '2026-07-29') < FIRST_FEE_WARN_DAYS, false)
+eq('...to the following month',  firstDueDate(1, '2026-07-29'), '2026-09-01')
+eq('the same day moves too',
+   daysToFirstFee(15, '2026-06-15') < FIRST_FEE_WARN_DAYS, false)
+eq('...a clear month out',       firstDueDate(15, '2026-06-15'), '2026-07-15')
 eq('twenty-nine days is quiet', daysToFirstFee(29, '2026-07-31') < FIRST_FEE_WARN_DAYS, false)
 eq('thirty days is quiet',      daysToFirstFee(1,  '2026-08-02') < FIRST_FEE_WARN_DAYS, false)
 
@@ -507,21 +517,24 @@ eq('thirty days is quiet',      daysToFirstFee(1,  '2026-08-02') < FIRST_FEE_WAR
    not. -------------------------------------------------------------- */
 const feeDay = (a: Parameters<typeof renewalAfterFeeDayChange>[0]) => renewalAfterFeeDayChange(a)
 
-eq('unpaid, joined days ago: new day, same month',
-   feeDay({ feeDay: 1, currentRenewalOn: '2026-08-05', joinedOn: '2026-07-26' }), '2026-08-01')
+eq('unpaid, joined days ago: new day, same month, min gap applied',
+   feeDay({ feeDay: 1, currentRenewalOn: '2026-08-05', joinedOn: '2026-07-26', today: '2026-07-31' }),
+   '2026-09-01')
 
 // The 242-day backdate. Re-deriving from a joining date eight months old
 // put them past +15, where the ladder stops — so the app silently gave up
 // chasing exactly the student the owner had just opened to chase.
 eq('unpaid, joined 8 months ago: does NOT backdate',
-   feeDay({ feeDay: 1, currentRenewalOn: '2026-08-05', joinedOn: '2025-11-26' }), '2026-08-01')
+   feeDay({ feeDay: 1, currentRenewalOn: '2026-08-05', joinedOn: '2025-11-26', today: '2026-07-31' }),
+   '2026-09-01')
 
 eq('paid this spell: never earlier than what they already owe',
    feeDay({ feeDay: 1, currentRenewalOn: '2026-08-05', joinedOn: '2025-11-26', settledThisSpell: true }),
    '2026-09-01')
 
 eq('new day precedes joining: next occurrence after joining',
-   feeDay({ feeDay: 1, currentRenewalOn: '2026-08-05', joinedOn: '2026-08-02' }), '2026-09-01')
+   feeDay({ feeDay: 1, currentRenewalOn: '2026-08-05', joinedOn: '2026-08-02', today: '2026-07-31' }),
+   '2026-09-01')
 
 // A renewal that predates the enrolment is a contradiction, not a date.
 ok('never lands before the joining date', (() => {
@@ -711,6 +724,87 @@ eq('an empty name never matches',
    findExisting(roll, '   ', '9876543210').map((s) => s.id), [])
 eq('+91 and the bare number are the same person',
    findExisting(roll, 'Aarav Sharma', '+91 98765 43210').map((s) => s.id), ['a'])
+/* -------- the first fee: move it, or mention it ----------------------
+   The owner's own three cases, registering on 31 July 2026. Under the
+   minimum gap the date MOVES; between the gap and the warning it stays
+   and is MENTIONED; past the warning it is silent. ------------------ */
+eq('fee day 1 on the 31st skips to September',  firstDueDate(1,  '2026-07-31'), '2026-09-01')
+eq('fee day 5 on the 31st skips to September',  firstDueDate(5,  '2026-07-31'), '2026-09-05')
+eq('fee day 15 on the 31st stays in August',    firstDueDate(15, '2026-07-31'), '2026-08-15')
+eq('fee day 29 on the 31st stays in August',    firstDueDate(29, '2026-07-31'), '2026-08-29')
+
+eq('...and 1 is silent, having been moved',  daysToFirstFee(1,  '2026-07-31') < FIRST_FEE_WARN_DAYS, false)
+eq('...and 5 is silent, having been moved',  daysToFirstFee(5,  '2026-07-31') < FIRST_FEE_WARN_DAYS, false)
+eq('...and 15 warns',                        daysToFirstFee(15, '2026-07-31') < FIRST_FEE_WARN_DAYS, true)
+eq('...and 29 is silent at 29 days',         daysToFirstFee(29, '2026-07-31') < FIRST_FEE_WARN_DAYS, false)
+
+// Exhaustive: never sooner than the minimum, never before joining, and
+// never further out than one clear cycle.
+ok('first fee always clears the minimum gap', (() => {
+  for (let y = 2026; y <= 2027; y++)
+    for (let mo = 1; mo <= 12; mo++) {
+      const key = `${y}-${String(mo).padStart(2, '0')}`
+      for (let d = 1; d <= daysInMonth(key); d++) {
+        const joined = `${key}-${String(d).padStart(2, '0')}`
+        for (let day = 1; day <= 31; day++) {
+          const due = firstDueDate(day, joined)
+          const gap = daysBetween(joined, due)
+          if (gap < FIRST_FEE_MIN_GAP) return false
+          if (due < joined) return false
+          if (gap > 62) return false
+          const want = Math.min(day, daysInMonth(due.slice(0, 7)))
+          if (Number(due.slice(8, 10)) !== want) return false
+        }
+      }
+    }
+  return true
+})())
+
+// Registering and then editing to the same day must agree. Two screens
+// that disagree about one student is the whole class of bug this had.
+ok('editing to a day agrees with registering on it', (() => {
+  const joined = '2026-07-31', today = '2026-07-31'
+  for (let day = 1; day <= 28; day++) {
+    const atRegistration = firstDueDate(day, joined)
+    const seed = firstDueDate(day === 1 ? 2 : 1, joined)
+    const edited = renewalAfterFeeDayChange({ feeDay: day, currentRenewalOn: seed, joinedOn: joined, today })
+    if (edited && daysBetween(today, edited) < FIRST_FEE_MIN_GAP) return false
+    if (edited && edited < joined) return false
+    if (!atRegistration) return false
+  }
+  return true
+})())
+
+/* A student who starts next month. The gap that matters is the one
+   after they JOIN, not the one after the owner happened to fill the
+   form in — measuring from today alone let a September starter be
+   billed two days into their first week because the form was filled in
+   July, while registering the same student produced October. */
+eq('a future starter: registering with the 5th',
+   firstDueDate(5, '2026-09-03'), '2026-10-05')
+eq('...and editing to the 5th lands in the same place',
+   renewalAfterFeeDayChange({
+     feeDay: 5, currentRenewalOn: '2026-09-03', joinedOn: '2026-09-03', today: '2026-07-31',
+   }), '2026-10-05')
+
+ok('every future start agrees, whichever screen set it', (() => {
+  const today = '2026-07-31'
+  for (let off = 1; off <= 90; off++) {
+    const joined = addDays(today, off)
+    for (let day = 1; day <= 28; day++) {
+      const atRegistration = firstDueDate(day, joined)
+      const seed = firstDueDate(day === 1 ? 2 : 1, joined)
+      const edited = renewalAfterFeeDayChange({
+        feeDay: day, currentRenewalOn: seed, joinedOn: joined, today,
+      }) ?? seed
+      if (daysBetween(joined, atRegistration) < FIRST_FEE_MIN_GAP) return false
+      if (daysBetween(joined, edited) < FIRST_FEE_MIN_GAP) return false
+      if (edited < joined) return false
+    }
+  }
+  return true
+})())
+
 
 /* ================= report ================= */
 console.log(`\n  PASS ${pass}   FAIL ${fails.length}\n`)

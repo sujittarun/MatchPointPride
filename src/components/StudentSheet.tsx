@@ -7,12 +7,12 @@ import {
   clampDay,
   dateLabelFull,
   daysBetween,
-  nextDueDate,
+  firstDueDate,
   nonNegative,
   ordinal,
   todayISO,
 } from '../lib/format'
-import { IconAlert } from './icons'
+import { IconAlert, IconCalendar } from './icons'
 import { findExisting } from '../lib/selectors'
 import { Field, Sheet } from './ui'
 
@@ -106,12 +106,22 @@ export function StudentSheet({
     isNew && !ignoreMatches ? findExisting(data.students, name, phone) : []
 
   /* When the first fee lands, and whether that is soon.
-     The app used to skip a month quietly when this was small. Saying it
-     is simpler and truer: the owner sees the date before saving and can
-     move the fee day if a parent who signed up on Tuesday hearing from
-     us on Friday is not what they want. */
-  const firstFee = (isNew || rejoining) && joinedOn ? nextDueDate(clampDay(dueDay), joinedOn) : null
+
+     Under FIRST_FEE_MIN_GAP days `firstDueDate` has already moved it to
+     the next month, so nothing here ever has to argue with an absurd
+     date — the amber band is the range in between, where the date is
+     defensible and the owner should simply know: a parent who signed up
+     on Tuesday may hear from us a fortnight on.
+
+     The date is stated either way, and stated on open. Showing it only
+     after the owner edits a field would hide it in exactly the case it
+     is most likely to be wrong — the defaults, day 1 and today, which
+     are what most students are saved with and which land in the amber
+     band for a fortnight of every month. A line that is quiet when the
+     date is ordinary is not an alarm you learn to skip. */
+  const firstFee = (isNew || rejoining) && joinedOn ? firstDueDate(clampDay(dueDay), joinedOn) : null
   const daysToFee = firstFee ? daysBetween(joinedOn, firstFee) : null
+  const feeIsSoon = daysToFee !== null && daysToFee < FIRST_FEE_WARN_DAYS
 
   /* Switching batch on a new student re-applies that batch's fee. */
   const pickBatch = (id: string) => {
@@ -280,26 +290,31 @@ export function StudentSheet({
         </div>
       )}
 
-      {firstFee && daysToFee !== null && daysToFee < FIRST_FEE_WARN_DAYS && (
+      {firstFee && daysToFee !== null && (
         <div
           className="row gap-10"
           style={{
             padding: 12,
             marginBottom: 14,
             borderRadius: 'var(--r-md)',
-            background: 'rgba(250,178,25,0.08)',
-            border: '1px solid rgba(250,178,25,0.26)',
+            background: feeIsSoon ? 'rgba(250,178,25,0.08)' : 'var(--surface-2)',
+            border: `1px solid ${feeIsSoon ? 'rgba(250,178,25,0.26)' : 'var(--line)'}`,
             alignItems: 'flex-start',
           }}
         >
-          <IconAlert size={17} style={{ color: '#ffd166', flexShrink: 0, marginTop: 1 }} />
+          {feeIsSoon ? (
+            <IconAlert size={17} style={{ color: '#ffd166', flexShrink: 0, marginTop: 1 }} />
+          ) : (
+            <IconCalendar size={17} style={{ color: 'var(--ink-muted)', flexShrink: 0, marginTop: 1 }} />
+          )}
           <div className="grow">
             <div style={{ fontSize: '0.86rem', fontWeight: 600 }}>
-              First fee is {daysToFee === 0 ? 'due the day they join' : `${daysToFee} day${daysToFee === 1 ? '' : 's'} after joining`}
+              First fee {dateLabelFull(firstFee)}
             </div>
             <p className="t-mut" style={{ lineHeight: 1.5, marginTop: 3 }}>
-              {dateLabelFull(firstFee)} — so the first reminder goes out then. Move the
-              fee day if that is too soon after signing up.
+              {daysToFee} day{daysToFee === 1 ? '' : 's'} after joining, and the first
+              reminder goes out then.
+              {feeIsSoon && ' Move the fee day if that is too soon after signing up.'}
             </p>
           </div>
         </div>
