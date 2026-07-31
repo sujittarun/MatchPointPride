@@ -569,6 +569,14 @@ eq('three clear weeks is plenty of notice, so it stands',
    firstDueDate(1, '2026-07-05'), '2026-08-01')
 eq('joining on your own fee day does not bill you that same day',
    firstDueDate(5, '2026-08-05'), '2026-09-05')
+/* Reported from the simulator: joined 15 June, fee day the 15th. Both
+   routes must land on 15 JULY — one month, not two. A stale build gave
+   16 August by skipping to July and then adding a month on top, which
+   is the two-graces-stacking bug wearing different numbers. */
+eq('joined 15 Jun on the 15th, unpaid', firstDueDate(15, '2026-06-15'), '2026-07-15')
+eq('joined 15 Jun on the 15th, paid on the day', nextDueDate(15, '2026-06-15'), '2026-06-15')
+ok('and paying then rolls exactly one month, to July not August',
+   firstDueDate(15, '2026-06-15') === '2026-07-15')
 eq('a week is the line, and a week is enough',
    firstDueDate(8, '2026-08-01'), '2026-08-08')
 eq('six days is not', firstDueDate(7, '2026-08-01'), '2026-09-07')
