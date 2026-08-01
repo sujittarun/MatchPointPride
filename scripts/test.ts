@@ -15,6 +15,7 @@ import {
   findExisting, phoneKey, sameName, needsACall, blockedReminders, awaitingFirstPayment,
 } from '../src/lib/selectors'
 import { assemble, toStudents, toTransactions } from '../src/lib/mapping'
+import { needsNamedUpiApps, payLink, upiLink, upiQuery } from '../src/lib/upi'
 import type { BatchRow, EnrollmentRow, MemberRow } from '../src/lib/cloud'
 import { buildEmptyData, buildSeedData } from '../src/lib/seed'
 import * as vault from '../src/lib/vault'
@@ -1156,6 +1157,66 @@ function report(): void {
     for (const f of fails) console.log('   ✗ ' + f)
     process.exit(1)
   }
+}
+
+/* ================= UPI links and the pay link =================
+   The payment page computes nothing, so everything worth asserting is
+   in how the link is FORMED and whether it survives the trip through
+   WhatsApp and back. ========================================= */
+{
+  const d = { amount: 2200, student: 'Aadhya Raju', upi: '7732077327@ybl',
+              payee: 'Match Point Badminton Academy', months: 'August' }
+
+  const q = upiQuery(d)
+  ok('upiQuery: payee address', q.includes('pa=7732077327%40ybl'))
+  ok('upiQuery: payee name', q.includes('pn=Match%20Point%20Badminton%20Academy'))
+  ok('upiQuery: amount to two places', q.includes('am=2200.00'))
+  ok('upiQuery: currency', q.includes('cu=INR'))
+  ok('upiQuery: note names the month', decodeURIComponent(q).includes('August'))
+
+  // A UPI intent carrying an explicit zero is rejected by some apps and
+  // silently prefilled as zero by others. Omit it and let them ask.
+  ok('upiQuery: no am= when the amount is unknown',
+     !upiQuery({ ...d, amount: 0 }).includes('am='))
+
+  // Android resolves upi://; iOS does not register it at all, which is
+  // why the named schemes exist.
+  // startsWith, not a slice of a hand-counted length — the first version
+  // of this asserted slice(0,15) against a 14-character scheme and failed
+  // on the test rather than the code.
+  ok('scheme: any',     upiLink('any', d).startsWith('upi://pay?'))
+  ok('scheme: phonepe', upiLink('phonepe', d).startsWith('phonepe://pay?'))
+  ok('scheme: gpay',    upiLink('gpay', d).startsWith('gpay://upi/pay?'))
+  ok('scheme: paytm',   upiLink('paytm', d).startsWith('paytmmp://pay?'))
+  ok('scheme: bhim',    upiLink('bhim', d).startsWith('bhim://upi/pay?'))
+
+  // Apple hardware needs named apps. iPadOS reports itself as a Mac, so
+  // the touch-point pair is the only way to catch an iPad.
+  ok('iPhone needs named apps',
+     needsNamedUpiApps({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)', platform: 'iPhone', maxTouchPoints: 5 }))
+  ok('iPad reporting as MacIntel needs named apps',
+     needsNamedUpiApps({ userAgent: 'Mozilla/5.0 (Macintosh)', platform: 'MacIntel', maxTouchPoints: 5 }))
+  ok('a real Mac does not',
+     !needsNamedUpiApps({ userAgent: 'Mozilla/5.0 (Macintosh)', platform: 'MacIntel', maxTouchPoints: 0 }))
+  ok('Android does not',
+     !needsNamedUpiApps({ userAgent: 'Mozilla/5.0 (Linux; Android 14)', platform: 'Linux armv8l', maxTouchPoints: 5 }))
+
+  // The link leaves the device, so it must be absolute — a relative one
+  // built from BASE_URL would only resolve on the phone that sent it.
+  const link = payLink(d)
+  ok('payLink is absolute', link.startsWith('https://'))
+  ok('payLink hits the pay route', link.includes('/#/pay?'))
+
+  // Round trip: what the reminder writes is what the page reads.
+  const parsed = new URLSearchParams(link.slice(link.indexOf('?') + 1))
+  eq('round trip: amount', parsed.get('a'), '2200')
+  eq('round trip: student', parsed.get('n'), 'Aadhya Raju')
+  eq('round trip: upi', parsed.get('u'), '7732077327@ybl')
+  eq('round trip: payee', parsed.get('p'), 'Match Point Badminton Academy')
+  eq('round trip: months', parsed.get('m'), 'August')
+
+  eq('payLink omits a zero amount', new URLSearchParams(
+       payLink({ ...d, amount: 0 }).split('?')[1]).get('a'), null)
 }
 
 /* The synchronous assertions above have already run. The vault is async

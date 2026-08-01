@@ -201,6 +201,25 @@ constraint** on `payments.status`, it is free text defaulting to
 assumed good. Telling the owner a parent has paid when they have not is
 the one mistake this app must not make.
 
+**The reminder is sent by hand, and that is why it can sound human.**
+Nothing in this repo sends automatically — the owner opens the list,
+reads the message and taps it into his own WhatsApp. So the copy in
+`academy.ts` is warm and carries emoji. A WhatsApp **Business API**
+template may not: that one is judged as marketing and puts the number
+at risk. If auto-sending is ever added it needs its **own** plain
+utility template, not this text.
+
+It carries a payment **link**, not a raw UPI id — `#/pay`, a public
+route decided before the auth gate in `App.tsx`, because the parent
+opening it is never signed in. That page computes nothing: the amount,
+the UPI id and the payee all arrive in the link, already resolved by
+`resolve_upi()` and `reminder_queue()` on the signed-in side. It opens
+`upi://pay` on Android and offers named apps (PhonePe, GPay, Paytm,
+BHIM) on iOS, **because iOS does not register the `upi://` scheme at
+all** — following it there does nothing, with no app and no error. The
+UPI id and amount are always on screen to copy, since a deep link can
+fail silently on any phone.
+
 **Two things were removed rather than faked.** One-off custom reminders
 and cancel/delete on a fee reminder: the list is `reminder_queue()`'s
 answer, recomputed on every read, so anything written to it locally

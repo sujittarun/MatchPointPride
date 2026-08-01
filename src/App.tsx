@@ -17,6 +17,7 @@ import BrandMark from './components/BrandMark'
 import { ACADEMY } from './lib/academy'
 
 import Landing from './pages/Landing'
+import Pay from './pages/Pay'
 import Dashboard from './pages/Dashboard'
 import Batches from './pages/Batches'
 import BatchDetail from './pages/BatchDetail'
@@ -54,11 +55,21 @@ export default function App() {
      rendered is Landing. */
   useNativeShell(refresh)
 
+  /* The payment page is public and stays public.
+
+     It is the link a parent opens from a fee reminder, and a parent is
+     never signed in — so it has to be decided before the gate below,
+     and exempted from the bounce. It reads nothing from the database:
+     the amount, the UPI id and the payee all arrive in the link,
+     already resolved by the signed-in app that sent it. */
+  const isPay = path === '/pay' || path.startsWith('/pay?')
+
   // Anything under the shell requires the gate; bounce back to landing.
   useEffect(() => {
-    if (!authed && path !== '/') navigate('/')
-  }, [authed, path])
+    if (!authed && path !== '/' && !isPay) navigate('/')
+  }, [authed, path, isPay])
 
+  if (isPay) return <Pay />
   if (path === '/' || !authed) return <Landing />
 
   const overdue = overdueReminders(data).length

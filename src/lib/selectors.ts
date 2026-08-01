@@ -20,6 +20,7 @@ import {
   todayISO,
 } from './format'
 import { ACADEMY } from './academy'
+import { payLink } from './upi'
 
 /* ------------------------------------------------------------------
    Batches & students
@@ -625,19 +626,40 @@ export function renderReminderMessage(
   const batch = batchById(data, student?.batchId)
   const due = reminder.dueDate
   const [y, m, d] = due.split('-')
-  /* Built in parts so the UPI sentence can be dropped entirely when the
-     batch has no UPI ID, rather than leaving a dangling "pay to:". */
+  /* Built in parts so the pay block drops out entirely when the batch
+     resolves to no UPI account, rather than sending a link to a page
+     that cannot take money.
+
+     Joined with a BLANK line, not a space. It used to be one space, so
+     three sentences ran together into a wall of text in a WhatsApp
+     bubble — the amount, the way to pay and the reassurance all
+     competing in one paragraph. */
   let template: string
   if (reminder.message?.trim()) {
     template = reminder.message
   } else {
     const parts = [ACADEMY.reminderTemplate]
-    if (batch?.upiId) parts.push(ACADEMY.upiLine)
+    if (batch?.upiId) parts.push(ACADEMY.reminderPayLine)
     parts.push(ACADEMY.reminderSignoff)
-    template = parts.join(' ')
+    template = parts.join('\n\n')
   }
 
+  /* The link carries the account this batch actually collects to — the
+     one `resolve_upi()` resolved server-side and mapping.ts carried
+     through — so a batch billing to its own account is paid into its
+     own account. The payment page decides nothing. */
+  const paylink = batch?.upiId
+    ? payLink({
+        amount: reminder.amount ?? 0,
+        student: student?.name,
+        upi: batch.upiId,
+        payee: batch.upiName || ACADEMY.billing.payee,
+        months: monthsPhrase(reminder.months),
+      })
+    : ''
+
   return template
+    .replace(/\{paylink\}/g, paylink)
     .replace(/\{upi\}/g, batch?.upiId ?? '')
     .replace(/\{payee\}/g, batch?.upiName ? ` (${batch.upiName})` : '')
     .replace(/\{months\}/g, monthsPhrase(reminder.months))

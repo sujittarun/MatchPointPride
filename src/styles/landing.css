@@ -1,14 +1,30 @@
 /* ============================================================
-   Landing — one screen, plus a short closing strip.
+   Landing — one screen. Literally one: it does not scroll.
 
-   The photograph does the selling; the copy stays out of its way.
-   The story is the player's progression, not the owner's CV — the
-   coaching credential appears once, at the bottom, in one sentence.
+   The photograph does the selling; the copy stays out of its way. The
+   credential is one sentence in the hero rather than a closing strip
+   below the fold, because there is no below the fold any more.
    ============================================================ */
 
+/* One screen, and on a phone held upright it does not scroll.
+
+   The page used to be a full-height hero PLUS a closing strip — 1061px
+   against an 812px viewport — so the owner scrolled his own marketing
+   page every time he opened the app, and the way in was the last thing
+   on it. Everything that matters is in the hero now and the strip is
+   gone, so the content genuinely fits.
+
+   `min-height`, NOT `height` with `overflow: hidden`. The hard version
+   was measurably a trap: turn the phone sideways and the login button
+   sits at 463px in a 375px viewport, clipped, with scrolling disabled —
+   the owner cannot reach the way in at all. Sized as a minimum, the
+   hero is exactly one screen whenever the content fits (so there is
+   nothing to scroll) and grows when it does not (so nothing is ever
+   hidden). No breakpoint to guess, and no height at which the page
+   silently eats its own controls. */
 .lp {
   background: var(--plane);
-  overflow-x: hidden;
+  min-height: 100svh;
 }
 
 /* very faint grain so the dark areas don't band */
@@ -81,46 +97,6 @@
   letter-spacing: -0.02em;
   font-size: 0.9rem;
   text-shadow: 0 1px 14px rgba(0, 0, 0, 0.75);
-}
-
-/* The owner's door, on the first screen.
-
-   The session is held in memory, so every restart lands here — making
-   him scroll a marketing page to find the way into his own academy is
-   the wrong daily cost. Small and quiet: a parent reading the page has
-   no reason to press it, and no reason to wonder what it is. */
-.hero__key {
-  margin-left: auto;
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: rgba(10, 14, 19, 0.42);
-  border: 1px solid rgba(232, 240, 248, 0.16);
-  color: rgba(232, 240, 248, 0.72);
-  cursor: pointer;
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  transition:
-    color var(--dur-fast) var(--ease),
-    border-color var(--dur-fast) var(--ease),
-    background var(--dur-fast) var(--ease);
-}
-
-.hero__key:hover {
-  color: var(--brand);
-  border-color: rgba(200, 255, 77, 0.42);
-  background: rgba(200, 255, 77, 0.08);
-}
-
-.hero__key:active {
-  transform: scale(0.94);
-}
-
-.hero__key:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
 }
 
 .hero__body {
@@ -255,11 +231,7 @@
   color: var(--brand);
 }
 
-/* ---------- cta + facts ---------- */
-.hero__cta {
-  margin-top: 20px;
-}
-
+/* ---------- facts + the way in ---------- */
 /* A hairline turns two loose facts into a specification. Without it they
    float under the ladder looking like a caption that lost its image. */
 .hero__facts {
@@ -288,70 +260,34 @@
   display: inline-block;
 }
 
-/* ============================================================
-   Closing strip
-   ============================================================ */
-/* Left, on the same axis as the hero. It was centred, which put the
-   page on two axes for no reason — the eye had to re-find the left edge
-   after the fold. */
-.close {
-  padding: 40px 20px calc(28px + env(safe-area-inset-bottom));
-  max-width: 520px;
-  margin: 0 auto;
-}
 
-.close__note {
-  font-size: 1.02rem;
-  line-height: 1.55;
-  letter-spacing: -0.012em;
-  color: var(--ink-primary);
-  max-width: 32ch;
-  text-wrap: pretty;
-}
 
-.close__note b {
-  color: var(--brand);
-  font-weight: 600;
-}
 
-.close__loc {
-  margin-top: 16px;
-  font-size: 0.8rem;
-  /* Not --ink-muted: that is rgb(108,122,137), which lands at 4.35:1 on
-     the plane and fails the 4.5 floor for text this size. It is the
-     academy's address — the one line on the page a parent may need to
-     read outdoors, one-handed. Tinted from the foreground rather than
-     swapped for a lighter grey, so it still reads as secondary. */
-  color: rgba(232, 240, 248, 0.52);
-  line-height: 1.55;
-  max-width: 34ch;
-  text-wrap: pretty;
-}
 
-.close__actions {
-  margin-top: 20px;
-}
 
-/* Separates the owner's door from everything written for parents, so it
-   reads as a deliberate second thing rather than one more link in a
-   footer. */
-.close__rule {
-  height: 1px;
-  margin: 28px 0 20px;
-  background: linear-gradient(
-    to right,
-    rgba(232, 240, 248, 0.14),
-    rgba(232, 240, 248, 0.04) 62%,
-    transparent
-  );
-}
+
+
+
+
 
 /* It was a 0.75rem grey ghost pill with a hairline border — the visual
    language of a disabled control, on the button the owner presses every
    day to get into his own business. It is not a louder button now, it is
    a made one: brand-tinted glass, the lock in brand, a real hover, and a
    focus ring that exists. */
+.hero__enter {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Full width, not an inline pill floating off to the left. It was
+   `inline-flex` inside a centred strip, which is why it read as
+   off-centre: the button was left-aligned in a block that was itself
+   centred, so it lined up with nothing. */
 .owner-link {
+  width: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: center;

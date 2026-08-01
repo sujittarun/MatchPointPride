@@ -12,21 +12,30 @@ export const ACADEMY = {
   ownerName: 'Venu',
   established: '2008',
 
-  /** Hero headline — the second line carries the brand colour. */
-  heroLine1: 'Every player starts somewhere.',
-  heroLine2: 'Nobody stays there.',
+  /**
+   * Hero headline — the second line carries the brand colour and the size.
+   *
+   * It used to be "Every player starts somewhere. / Nobody stays there."
+   * Read it as a parent and it is a verdict on your child: you are not
+   * good enough yet, and you will not be allowed to stay. The academy
+   * was the one thing the sentence never mentioned.
+   *
+   * This says what the place does instead of what the player lacks. The
+   * subject is the coaching, which is the thing an owner and a coach are
+   * actually proud of and the thing a parent is choosing.
+   */
+  heroLine1: 'Structured coaching, every morning and every evening.',
+  heroLine2: 'Where players are made.',
   /* The   before each em dash is deliberate: a dash may never begin a
      line. Without it this wrapped to "…coaching in Hyderabad" / "— from
      holding the racket…", which is the one break a typesetter would send
      back. Non-breaking space, so the dash stays welded to the word it
      follows at every width. */
+  /* Folded up from what used to be a separate closing strip below the
+     fold. The page is one screen now, so the credential either earns a
+     place in the hero or does not appear — and it earns it. */
   heroSub:
-    'Structured badminton coaching in Hyderabad — from holding the racket properly ' +
-    'to walking into a tournament draw.',
-
-  /** The one place coaching credentials are stated on the public page. */
-  coachingNote:
-    'Small batches, grouped by level rather than age — and a standard on court set by ' +
+    'Small batches grouped by level, not age — and a standard on court set by ' +
     'someone who has played at national level.',
 
   /** The four stages a player moves through. */
@@ -41,18 +50,71 @@ export const ACADEMY = {
   enquiryPhone: '' as string,
   countryCode: '91' as string,
 
-  /** Placeholders: {student} {guardian} {amount} {months} {due} {batch} {slot} {academy} {owner} */
-  reminderTemplate:
-    'Hi {guardian}, a gentle reminder from {academy}. ' +
-    "{student}'s {batch} fee for {months} comes to {amount}.",
+  /**
+   * Where this app is published. The reminder puts a payment link in a
+   * parent's WhatsApp, so it has to be an absolute URL — and it cannot
+   * be derived at runtime, because the Android build sets a relative
+   * base (`./`) and would produce a link that only works on the phone
+   * that sent it.
+   */
+  siteUrl: 'https://sujittarun.github.io/MatchPointPride/',
 
   /**
-   * Appended only when the student's batch has a UPI ID, so a batch without
-   * one never sends a half-finished "pay to:" line. {upi} and {payee} come
-   * from the batch.
+   * The fallback shown on the payment page when a link arrives without
+   * payment details — mirrors `tenants.config.billing`.
+   *
+   * It is a FALLBACK, never the source of truth. A real reminder link
+   * carries the account resolved server-side by `resolve_upi()`, which
+   * walks batch → centre → tenant; a batch collecting to its own account
+   * would be paid into the wrong one if this file decided. The page
+   * prints whichever it used, so it is always visible which was.
    */
-  upiLine: 'You can pay by UPI to {upi}{payee}. Please send a screenshot once done.',
+  billing: {
+    upiId: '7732077327@ybl',
+    payee: 'Match Point Badminton Academy',
+  },
+
+  /* ----------------------------------------------------------------
+     The fee reminder.
+
+     EVERY reminder this app sends is sent BY HAND: the owner opens the
+     list, reads the message, and taps to send it through his own
+     WhatsApp. There is no Business-API template and no automatic send
+     anywhere in this repo — which is exactly why this can sound like a
+     person. A utility template on the Business API may not; that one
+     would be judged as marketing and the number put at risk. If auto
+     sending is ever added, it needs its OWN plain template rather than
+     this text.
+
+     So: warm, and not a chase. "Whenever it suits you" is the whole
+     posture — the ladder already decides when to ask, and the message
+     does not need to apply pressure on top of it.
+
+     Placeholders: {student} {guardian} {amount} {months} {due} {batch}
+     {academy} {owner} {paylink} {upi} {payee}
+     Blocks are joined with a blank line between them.
+     ---------------------------------------------------------------- */
+  reminderTemplate:
+    'Hi {guardian} 😊\n\n' +
+    'A gentle note from {academy} — {student}’s {batch} fee for {months} ' +
+    'comes to *{amount}*.',
+
+  /**
+   * Only when the batch resolves to a UPI account, so a batch without one
+   * never sends a link to a page that cannot take money.
+   *
+   * A link, not a raw UPI id. The id asked a parent to copy a string into
+   * a banking app by hand and get it exactly right; the page opens their
+   * UPI app with the amount already filled, and still shows the id for
+   * anyone who would rather type it.
+   */
+  reminderPayLine:
+    'Whenever it suits you, you can pay here 👇\n{paylink}\n\n' +
+    'That page opens your UPI app directly, and the UPI ID is there to copy ' +
+    'if you would rather do it yourself.',
 
   /** Always last. */
-  reminderSignoff: 'Please ignore if already paid. — {owner}',
+  reminderSignoff:
+    'Send a screenshot once it is done and I will mark it off ✅\n' +
+    'Already paid? Please ignore this 🙏\n\n— {owner}\n{academy}',
 } as const

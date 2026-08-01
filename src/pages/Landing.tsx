@@ -40,16 +40,13 @@ export default function Landing() {
         </div>
         <div className="hero__scrim" />
 
+        {/* The lock that used to sit up here is gone. It existed because
+            the only way in was to scroll the whole page to a button in
+            the footer; the page does not scroll any more and the button
+            is on screen, so a second entrance was just clutter. */}
         <div className="hero__top">
           <BrandMark size={34} />
           <span className="hero__wordmark">{A.name}</span>
-          {/* The owner reaches this page on every single app open — the
-              session lives in memory, so a restart always lands here. One
-              tap from the first screen, rather than scrolling the whole
-              marketing page to find the door at the bottom. */}
-          <button className="hero__key" onClick={() => setOpen(true)} aria-label="Academy login">
-            <IconLock size={15} />
-          </button>
         </div>
 
         <div className="hero__body">
@@ -87,9 +84,31 @@ export default function Landing() {
             </div>
           </Rise>
 
-          {waHref && (
-            <Rise delay={290}>
-              <div className="hero__cta">
+          <Rise delay={290}>
+            <div className="hero__facts">
+              <span>
+                <b>{A.courts}</b>
+              </span>
+              <i />
+              <span>
+                Open <b>{A.hours}</b>
+              </span>
+              <i />
+              <span>{A.area}</span>
+            </div>
+          </Rise>
+
+          {/* The whole footer folded up into here.
+
+              It held the coaching note, the address and the login, and
+              it put all three below the fold — so the owner scrolled a
+              marketing page every time he opened his own app, and a
+              parent had to scroll to find out where the place is. The
+              note is the hero sub now, the area is a fact, and the door
+              is on screen. */}
+          <Rise delay={360}>
+            <div className="hero__enter">
+              {waHref && (
                 <a
                   className="btn btn--primary btn--block"
                   href={waHref}
@@ -99,50 +118,15 @@ export default function Landing() {
                   <IconWhatsApp size={17} />
                   Ask about a trial session
                 </a>
-              </div>
-            </Rise>
-          )}
-
-          <Rise delay={350}>
-            <div className="hero__facts">
-              <span>
-                <b>{A.courts}</b>
-              </span>
-              <i />
-              <span>
-                Open <b>{A.hours}</b>
-              </span>
+              )}
+              <button className="owner-link" onClick={() => setOpen(true)}>
+                <IconLock size={14} />
+                Academy login
+              </button>
             </div>
           </Rise>
         </div>
       </header>
-
-      <footer className="close">
-        <Rise>
-          <p className="close__note">{A.coachingNote}</p>
-          <p className="close__loc">{A.location}</p>
-
-          {waHref && (
-            <div className="close__actions">
-              <a
-                className="btn btn--block"
-                href={waHref}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <IconWhatsApp size={16} />
-                Message the academy
-              </a>
-            </div>
-          )}
-
-          <div className="close__rule" />
-          <button className="owner-link" onClick={() => setOpen(true)}>
-            <IconLock size={14} />
-            Academy login
-          </button>
-        </Rise>
-      </footer>
 
       <PasscodeSheet
         open={open}
