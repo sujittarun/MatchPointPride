@@ -1382,3 +1382,11 @@ input.input--live {
   background: var(--brand-wash);
   font-weight: 600;
 }
+
+/* Demo mode. Warning-coloured rather than brand-coloured: it is not a
+   feature of the app, it is a statement that the app is not itself. */
+.loadbar--demo {
+  background: rgba(250, 178, 25, 0.14);
+  border-bottom: 1px solid rgba(250, 178, 25, 0.32);
+  color: #ffd166;
+}

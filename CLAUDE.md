@@ -106,6 +106,26 @@ batches, students and payments live in localStorage on his phone, so his
 backup is the only place they exist. `0008` seeded the centre and sport;
 nothing else about Pride is inventable from the platform side.
 
+## Login is OFF right now
+
+`DEMO` in `src/lib/demo.ts` is `true`. "Academy login" goes straight to
+the dashboard with no credential, on generated data in
+`localStorage['mpp.demo.v2']`. Students, coaches, batches, fees and
+expenses can all be added and edited; reminders are a synthesised open
+queue shaped like the real ladder, and sending one opens a real
+WhatsApp with the real message.
+
+**Nothing touches Postgres, and no money figure here is real** —
+`resolve_fee`, `record_fee_payment` and `reminder_queue` all live in
+the database and none of them run in this mode. An amber strip says so
+on every screen, because the failure mode of forgetting the switch is
+the owner running his academy on invented students.
+
+Set `DEMO = false` to restore the PIN gate and the platform database;
+`clearDemo()` drops the local store on the next boot. The demo branches
+sit at the top of the write helpers in `store.tsx` and simply stop
+being taken — nothing else changes shape.
+
 ## Where the data lives
 
 Postgres, and only Postgres. There is no local copy of the academy's

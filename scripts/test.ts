@@ -340,7 +340,13 @@ ok('seed: all amounts positive', seed.transactions.every((t) => t.amount > 0))
   const rem: any = { id: 'r', studentId: 's1', kind: 'fee', title: 't', message: '', dueDate: '2026-07-05', amount: 2000, months: ['2026-07'], status: 'pending', createdAt: '', sendCount: 0, history: [] }
   const msg = renderReminderMessage(d, rem)
   ok('message: substitutes student', msg.includes('Aarav Reddy'))
-  ok('message: substitutes guardian', msg.includes('Reddy family'))
+  /* The default message no longer greets by name — the owner asked for
+     it crisp, and a WhatsApp fee note that opens by naming the academy
+     reads fine without one. `{guardian}` still resolves, so a custom
+     message can use it; that is what this asserts now. */
+  ok('message: {guardian} still resolves when a template asks for it',
+     renderReminderMessage(d, { ...rem, message: 'Hi {guardian}, {amount} for {student}.' })
+       .includes('Reddy family'))
   ok('message: substitutes amount', msg.includes('₹2,000'))
   ok('message: names the month owed', msg.includes('July'), msg)
   ok('message: no leftover placeholders', !/\{[a-z]+\}/.test(msg), msg)

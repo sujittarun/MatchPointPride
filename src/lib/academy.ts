@@ -86,17 +86,18 @@ export const ACADEMY = {
      sending is ever added, it needs its OWN plain template rather than
      this text.
 
-     So: warm, and not a chase. "Whenever it suits you" is the whole
-     posture — the ladder already decides when to ask, and the message
-     does not need to apply pressure on top of it.
+     Warm, and short. The first draft explained the payment page in two
+     sentences the parent does not need — they are about to open it and
+     see it. A reminder read on a phone is skimmed, and every line that
+     is not the amount, the link or the reassurance is a line between
+     the reader and those three.
 
      Placeholders: {student} {guardian} {amount} {months} {due} {batch}
      {academy} {owner} {paylink} {upi} {payee}
      Blocks are joined with a blank line between them.
      ---------------------------------------------------------------- */
   reminderTemplate:
-    'Hi {guardian} 😊\n\n' +
-    'A gentle note from {academy} — {student}’s {batch} fee for {months} ' +
+    'A gentle note from {academy} 🏸 — {student}’s {batch} fee for {months} ' +
     'comes to *{amount}*.',
 
   /**
@@ -108,10 +109,7 @@ export const ACADEMY = {
    * UPI app with the amount already filled, and still shows the id for
    * anyone who would rather type it.
    */
-  reminderPayLine:
-    'Whenever it suits you, you can pay here 👇\n{paylink}\n\n' +
-    'That page opens your UPI app directly, and the UPI ID is there to copy ' +
-    'if you would rather do it yourself.',
+  reminderPayLine: 'Pay here 👇\n{paylink}',
 
   /** Always last. */
   reminderSignoff:

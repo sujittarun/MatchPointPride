@@ -7,11 +7,12 @@ import { Sheet } from '../components/ui'
 import { IconLock, IconTrophy, IconWhatsApp } from '../components/icons'
 import BrandMark from '../components/BrandMark'
 import { ACADEMY as A } from '../lib/academy'
+import { DEMO } from '../lib/demo'
 
 const COURT = `${import.meta.env.BASE_URL}court.jpg`
 
 export default function Landing() {
-  const { login, authed } = useStore()
+  const { login, authed, enterDemo } = useStore()
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
@@ -119,7 +120,14 @@ export default function Landing() {
                   Ask about a trial session
                 </a>
               )}
-              <button className="owner-link" onClick={() => setOpen(true)}>
+              {/* Login is off. The button still says the same thing and
+                  sits in the same place — it just does not stop to ask
+                  for anything. Flip DEMO in `demo.ts` and the PIN sheet
+                  comes back with no other change here. */}
+              <button
+                className="owner-link"
+                onClick={() => (DEMO ? enterDemo() : setOpen(true))}
+              >
                 <IconLock size={14} />
                 Academy login
               </button>
