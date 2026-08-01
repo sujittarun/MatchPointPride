@@ -42,11 +42,10 @@ const BRAND = '#C8FF4D'
 const BRAND_DIM = '#A3D62F'
 const INK = '#0B1004'
 
-/** The shuttlecock, in BrandMark's 24-unit box. Copied, not re-drawn:
-    a bound band, five converging feathers, and a domed cork. */
+/** The shuttlecock, in BrandMark's 24-unit box. Copied, not re-drawn. */
 const SHUTTLE = `
-  <path fill="${INK}" d="M8.05,4.3 H15.95 A1.05,1.05 0 0 1 17,5.35 V6.4 H7 V5.35 A1.05,1.05 0 0 1 8.05,4.3 Z M7,6 H8.7 L10.44,15.2 H9.9 Z M9.3,6 H10.7 L11.28,15.2 H11.04 Z M11.3,6 H12.7 L12.12,15.2 H11.88 Z M13.3,6 H14.7 L12.96,15.2 H12.72 Z M15.3,6 H17 L14.1,15.2 H13.56 Z"/>
-  <path fill="${INK}" d="M10.1,14.9 H13.9 V17.8 A1.9,1.9 0 0 1 12,19.7 A1.9,1.9 0 0 1 10.1,17.8 Z"/>`
+  <path fill="${INK}" d="M9.5,12.9 L6.9,4.9 A1.1,1.1 0 0 1 7.95,3.4 H16.05 A1.1,1.1 0 0 1 17.1,4.9 L14.5,12.9 Z"/>
+  <circle cx="12" cy="17.6" r="3.5" fill="${INK}"/>`
 
 /**
  * @param size    pixels square
