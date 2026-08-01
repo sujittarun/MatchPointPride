@@ -15,20 +15,25 @@ export const ACADEMY = {
   /** Hero headline — the second line carries the brand colour. */
   heroLine1: 'Every player starts somewhere.',
   heroLine2: 'Nobody stays there.',
+  /* The   before each em dash is deliberate: a dash may never begin a
+     line. Without it this wrapped to "…coaching in Hyderabad" / "— from
+     holding the racket…", which is the one break a typesetter would send
+     back. Non-breaking space, so the dash stays welded to the word it
+     follows at every width. */
   heroSub:
-    'Structured badminton coaching in Hyderabad — from holding the racket properly ' +
+    'Structured badminton coaching in Hyderabad — from holding the racket properly ' +
     'to walking into a tournament draw.',
 
   /** The one place coaching credentials are stated on the public page. */
   coachingNote:
-    'Small batches, grouped by level rather than age — and a standard on court set by ' +
+    'Small batches, grouped by level rather than age — and a standard on court set by ' +
     'someone who has played at national level.',
 
   /** The four stages a player moves through. */
   ladder: ['Basics', 'Rally', 'Match play', 'Tournament'],
 
   area: 'Narsingi',
-  location: 'Alkapur Road 30 · beside Sam Houston Intl School · Narsingi, Hyderabad',
+  location: 'Alkapur Road 30 · beside Sam Houston Intl School · Narsingi, Hyderabad',
   courts: '7 indoor courts',
   hours: '5 AM – 1 AM',
 

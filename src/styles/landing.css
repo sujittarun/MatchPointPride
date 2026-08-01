@@ -83,6 +83,46 @@
   text-shadow: 0 1px 14px rgba(0, 0, 0, 0.75);
 }
 
+/* The owner's door, on the first screen.
+
+   The session is held in memory, so every restart lands here — making
+   him scroll a marketing page to find the way into his own academy is
+   the wrong daily cost. Small and quiet: a parent reading the page has
+   no reason to press it, and no reason to wonder what it is. */
+.hero__key {
+  margin-left: auto;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(10, 14, 19, 0.42);
+  border: 1px solid rgba(232, 240, 248, 0.16);
+  color: rgba(232, 240, 248, 0.72);
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  transition:
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+
+.hero__key:hover {
+  color: var(--brand);
+  border-color: rgba(200, 255, 77, 0.42);
+  background: rgba(200, 255, 77, 0.08);
+}
+
+.hero__key:active {
+  transform: scale(0.94);
+}
+
+.hero__key:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
 .hero__body {
   margin: auto auto 0;
   width: 100%;
@@ -90,50 +130,68 @@
   padding: 0 20px calc(22px + env(safe-area-inset-bottom));
 }
 
-.eyebrow {
+/* A kicker, not a badge. The pill it used to be — outline, blur, tinted
+   fill — was three decorations carrying one short line of text, and it
+   read as a UI chip dropped onto a photograph rather than as part of the
+   page. Set on the photograph directly it belongs to the image. */
+.kicker {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 12px;
-  border-radius: var(--r-pill);
-  background: rgba(10, 14, 19, 0.5);
-  border: 1px solid rgba(200, 255, 77, 0.32);
+  gap: 8px;
   color: var(--brand);
-  font-size: 0.645rem;
-  font-weight: 650;
-  letter-spacing: 0.11em;
+  font-size: 0.66rem;
+  font-weight: 660;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.9);
 }
 
 .hero__title {
-  margin-top: 14px;
-  font-size: clamp(1.95rem, 8.8vw, 2.6rem);
-  line-height: 1.02;
-  letter-spacing: -0.042em;
-  font-weight: 690;
-  max-width: 14ch;
-  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.8);
+  margin-top: 16px;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.82);
 }
 
-.hero__title span {
+/* The setup. Quieter and smaller — it is the premise, not the promise. */
+.hero__setup {
   display: block;
+  font-size: clamp(1rem, 4.3vw, 1.22rem);
+  font-weight: 560;
+  line-height: 1.3;
+  letter-spacing: -0.012em;
+  color: rgba(232, 240, 248, 0.86);
+  max-width: 20ch;
+  text-wrap: balance;
+}
+
+/* The payoff. Roughly 2.5x the setup, which is what makes the pair read
+   as one sentence with a turn in it rather than two headlines. */
+.hero__payoff {
+  display: block;
+  margin-top: 7px;
+  font-size: clamp(1.85rem, 8.9vw, 3rem);
+  font-weight: 720;
+  line-height: 0.97;
+  letter-spacing: -0.038em;
   color: var(--brand);
+  text-wrap: balance;
 }
 
 .hero__sub {
-  margin-top: 12px;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  color: rgba(232, 240, 248, 0.84);
-  max-width: 32ch;
-  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.8);
+  margin-top: 15px;
+  font-size: 0.925rem;
+  line-height: 1.56;
+  color: rgba(232, 240, 248, 0.8);
+  max-width: 34ch;
+  /* The rag used to break at "coaching in / Hyderabad" and leave
+     "properly" hanging. Let the browser balance it instead of counting
+     characters and hoping. */
+  text-wrap: pretty;
+  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.85);
 }
 
 /* ---------- progression ladder ---------- */
 .ladder {
-  margin-top: 20px;
+  margin-top: 26px;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   position: relative;
@@ -174,18 +232,23 @@
   z-index: 1;
 }
 
+/* The one stage that is lit. The ring reads as a position on the rail;
+   the drop below it is what stops the whole thing looking like a
+   flat diagram printed on the photograph. */
 .rung--first .rung__dot {
   background: var(--brand);
   border-color: var(--brand);
-  box-shadow: 0 0 0 4px rgba(200, 255, 77, 0.18);
+  box-shadow:
+    0 0 0 5px rgba(200, 255, 77, 0.16),
+    0 2px 14px rgba(200, 255, 77, 0.5);
 }
 
 .rung__label {
-  font-size: 0.66rem;
+  font-size: 0.645rem;
   font-weight: 620;
-  letter-spacing: 0.02em;
-  color: rgba(232, 240, 248, 0.72);
-  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.8);
+  letter-spacing: 0.035em;
+  color: rgba(232, 240, 248, 0.7);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.85);
 }
 
 .rung--first .rung__label {
@@ -197,8 +260,12 @@
   margin-top: 20px;
 }
 
+/* A hairline turns two loose facts into a specification. Without it they
+   float under the ladder looking like a caption that lost its image. */
 .hero__facts {
-  margin-top: 16px;
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(232, 240, 248, 0.11);
   display: flex;
   align-items: center;
   gap: 14px;
@@ -224,17 +291,22 @@
 /* ============================================================
    Closing strip
    ============================================================ */
+/* Left, on the same axis as the hero. It was centred, which put the
+   page on two axes for no reason — the eye had to re-find the left edge
+   after the fold. */
 .close {
-  padding: 34px 20px calc(26px + env(safe-area-inset-bottom));
+  padding: 40px 20px calc(28px + env(safe-area-inset-bottom));
   max-width: 520px;
   margin: 0 auto;
-  text-align: center;
 }
 
 .close__note {
-  font-size: 0.93rem;
-  line-height: 1.6;
-  color: var(--ink-secondary);
+  font-size: 1.02rem;
+  line-height: 1.55;
+  letter-spacing: -0.012em;
+  color: var(--ink-primary);
+  max-width: 32ch;
+  text-wrap: pretty;
 }
 
 .close__note b {
@@ -243,36 +315,89 @@
 }
 
 .close__loc {
-  margin-top: 18px;
+  margin-top: 16px;
   font-size: 0.8rem;
-  color: var(--ink-muted);
+  /* Not --ink-muted: that is rgb(108,122,137), which lands at 4.35:1 on
+     the plane and fails the 4.5 floor for text this size. It is the
+     academy's address — the one line on the page a parent may need to
+     read outdoors, one-handed. Tinted from the foreground rather than
+     swapped for a lighter grey, so it still reads as secondary. */
+  color: rgba(232, 240, 248, 0.52);
   line-height: 1.55;
+  max-width: 34ch;
+  text-wrap: pretty;
 }
 
 .close__actions {
-  margin-top: 18px;
+  margin-top: 20px;
 }
 
+/* Separates the owner's door from everything written for parents, so it
+   reads as a deliberate second thing rather than one more link in a
+   footer. */
+.close__rule {
+  height: 1px;
+  margin: 28px 0 20px;
+  background: linear-gradient(
+    to right,
+    rgba(232, 240, 248, 0.14),
+    rgba(232, 240, 248, 0.04) 62%,
+    transparent
+  );
+}
+
+/* It was a 0.75rem grey ghost pill with a hairline border — the visual
+   language of a disabled control, on the button the owner presses every
+   day to get into his own business. It is not a louder button now, it is
+   a made one: brand-tinted glass, the lock in brand, a real hover, and a
+   focus ring that exists. */
 .owner-link {
-  margin-top: 22px;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 9px 15px;
+  justify-content: center;
+  gap: 9px;
+  min-height: 46px;
+  padding: 0 22px;
   border-radius: var(--r-pill);
-  background: none;
-  border: 1px solid var(--line);
-  color: var(--ink-muted);
-  font-size: 0.75rem;
-  font-weight: 560;
+  background: linear-gradient(
+    180deg,
+    rgba(200, 255, 77, 0.09),
+    rgba(200, 255, 77, 0.028)
+  );
+  border: 1px solid rgba(200, 255, 77, 0.3);
+  color: var(--ink-primary);
+  font: inherit;
+  font-size: 0.815rem;
+  font-weight: 640;
+  letter-spacing: -0.004em;
   cursor: pointer;
-  transition: color var(--dur-fast) var(--ease),
-    border-color var(--dur-fast) var(--ease);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
+.owner-link svg {
+  color: var(--brand);
+}
+
+.owner-link:hover {
+  border-color: rgba(200, 255, 77, 0.52);
+  background: linear-gradient(
+    180deg,
+    rgba(200, 255, 77, 0.15),
+    rgba(200, 255, 77, 0.05)
+  );
+  transform: translateY(-1px);
 }
 
 .owner-link:active {
-  color: var(--ink-secondary);
-  border-color: var(--line-strong);
+  transform: translateY(0) scale(0.985);
+}
+
+.owner-link:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
 
 /* ============================================================

@@ -43,20 +43,32 @@ export default function Landing() {
         <div className="hero__top">
           <BrandMark size={34} />
           <span className="hero__wordmark">{A.name}</span>
+          {/* The owner reaches this page on every single app open — the
+              session lives in memory, so a restart always lands here. One
+              tap from the first screen, rather than scrolling the whole
+              marketing page to find the door at the bottom. */}
+          <button className="hero__key" onClick={() => setOpen(true)} aria-label="Academy login">
+            <IconLock size={15} />
+          </button>
         </div>
 
         <div className="hero__body">
           <Rise>
-            <span className="eyebrow">
-              <IconTrophy size={13} />
+            <p className="kicker">
+              <IconTrophy size={12} />
               {A.area} · Since {A.established}
-            </span>
+            </p>
           </Rise>
 
+          {/* Two clauses, two sizes. They used to be set at the same size,
+              so the setup and the payoff carried equal weight and neither
+              landed — the line that sells the place was just the green
+              one. The scale step does the work that colour was being
+              asked to do alone. */}
           <Rise delay={80}>
             <h1 className="hero__title">
-              {A.heroLine1}
-              <span>{A.heroLine2}</span>
+              <span className="hero__setup">{A.heroLine1}</span>
+              <span className="hero__payoff">{A.heroLine2}</span>
             </h1>
           </Rise>
 
@@ -124,8 +136,9 @@ export default function Landing() {
             </div>
           )}
 
+          <div className="close__rule" />
           <button className="owner-link" onClick={() => setOpen(true)}>
-            <IconLock size={13} />
+            <IconLock size={14} />
             Academy login
           </button>
         </Rise>
