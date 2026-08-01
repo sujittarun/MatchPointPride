@@ -10,7 +10,6 @@ import {
 } from 'react'
 import type { AppData } from './types'
 import { buildEmptyData } from './seed'
-import { todayISO, uid } from './format'
 import { reportIssue } from './telemetry'
 import {
   addExpense as cloudAddExpense,
@@ -38,15 +37,6 @@ import {
   signOut as cloudSignOut,
 } from './cloud'
 import * as vault from './vault'
-import {
-  DEMO,
-  clearDemo,
-  demoRecordFee,
-  demoSaveStaff,
-  demoSaveStudent,
-  loadDemo,
-  saveDemo,
-} from './demo'
 import { assemble } from './mapping'
 
 const ATTEMPTS_KEY = 'mpp.pin.attempts'
@@ -127,7 +117,10 @@ interface LoadResult {
    the point of this change was that it should not be there at all.
    Cleared once, on boot. */
 function clearLegacyLocalData(): void {
-  for (const k of ['mpp.data.v1', 'mpp.data.v1.corrupt']) {
+  /* `mpp.demo.*` joins the list: demo mode is gone, and any device that
+     ran it is carrying a couple of hundred KB of invented students that
+     nothing will ever read again. */
+  for (const k of ['mpp.data.v1', 'mpp.data.v1.corrupt', 'mpp.demo.v1', 'mpp.demo.v2']) {
     try {
       if (localStorage.getItem(k) !== null) localStorage.removeItem(k)
     } catch {
@@ -142,12 +135,6 @@ function clearLegacyLocalData(): void {
    data yet, and a stale local copy would be a guess dressed as a fact. */
 function load(): LoadResult {
   clearLegacyLocalData()
-  // Turning DEMO off drops the sample academy with it, so a device that
-  // was demoed does not keep a store nothing will ever read again.
-  if (!DEMO) clearDemo()
-  // Login is off: open on generated data rather than an empty shell,
-  // because with no session the database would return nothing anyway.
-  if (DEMO) return { data: loadDemo() }
   return { data: buildEmptyData() }
 }
 
@@ -171,8 +158,6 @@ interface Ctx {
   /** Has this device been set up? Decides which login screen shows. */
   enrolled: boolean
   logout: () => void
-  /** Login is off (`demo.ts`): step in with no credential at all. */
-  enterDemo: () => void
   toasts: Toast[]
   toast: (text: string, tone?: 'good' | 'bad') => void
   /** True while the tenant is being read from Postgres. */
@@ -238,7 +223,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      the app with no session behind it, which reads as an academy with
      no students rather than as a locked door. Deriving it removes the
      pair that could disagree instead of keeping them in step. */
-  const [authed, setAuthed] = useState<boolean>(() => (DEMO ? false : isSignedIn()))
+  const [authed, setAuthed] = useState<boolean>(() => isSignedIn())
   const [toasts, setToasts] = useState<Toast[]>([])
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -268,10 +253,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      resolve_fee, who is due by reminder_queue. Nothing is recomputed on
      arrival; mapping.ts only reshapes. */
   const refresh = useCallback(async () => {
-    // Nothing to re-read: the demo store IS the source of truth, and a
-    // fetch here would replace it with the empty result RLS returns to
-    // a caller holding no session.
-    if (DEMO) return
     if (!isSignedIn()) return
     try {
       setLoading(true)
@@ -292,13 +273,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (authed) void refresh()
   }, [authed, refresh])
-
-  /* Demo writes are local, so they have to be kept somewhere or a
-     reload throws away the scenario the owner just set up. A clearly
-     demo-named key, dropped the moment DEMO goes false. */
-  useEffect(() => {
-    if (DEMO) saveDemo(data)
-  }, [data])
 
   /* The write-to-localStorage effect is gone.
 
@@ -402,33 +376,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   )
 
   const saveBatch = useCallback(
-    (a: { id?: string; name: string; days: number[]; startTime: string; endTime: string; capacity?: number | null; fee: number }) => {
-      if (DEMO) {
-        update((d) => {
-          const hit = a.id ? d.batches.find((b) => b.id === a.id) : undefined
-          if (hit) Object.assign(hit, a)
-          else d.batches.push({ ...a, id: uid('bat') } as never)
-        })
-        return Promise.resolve({ ok: true, message: '' })
-      }
-      return write('save batch', () =>
+    (a: { id?: string; name: string; days: number[]; startTime: string; endTime: string; capacity?: number | null; fee: number }) =>
+      write('save batch', () =>
         cloudSaveBatch({ ...a, id: a.id ? Number(a.id) : undefined, centreId: centreId.current }),
-      )
-    },
-    [write, update],
+      ),
+    [write],
   )
 
   const removeBatch = useCallback(
-    (id: string) => {
-      if (DEMO) {
-        update((d) => {
-          d.batches = d.batches.filter((b) => b.id !== id)
-        })
-        return Promise.resolve({ ok: true, message: '' })
-      }
-      return write('delete batch', () => cloudDeleteBatch(Number(id)))
-    },
-    [write, update],
+    (id: string) => write('delete batch', () => cloudDeleteBatch(Number(id))),
+    [write],
   )
 
   /* Fees go through record_fee_payment and nothing else. It is the one
@@ -439,13 +396,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      keyed on it — the attachment cannot be named until the money exists. */
   const recordFee = useCallback(
     async (a: { enrollmentId: number; amount: number; onDate?: string; mode?: string; note?: string }) => {
-      if (DEMO) {
-        update((d) => demoRecordFee(d, {
-          enrollmentId: a.enrollmentId, amount: a.amount,
-          onDate: a.onDate ?? todayISO(), note: a.note,
-        }))
-        return { ok: true, message: '' }
-      }
       if (!isSignedIn()) return { ok: false, message: 'Not signed in to the academy database.' }
       try {
         const out = await cloudRecordPayment(a)
@@ -459,108 +409,50 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [refresh, update],
+    [refresh],
   )
 
   const addRevenue = useCallback(
-    (a: { label: string; amount: number; onDate: string; kind: 'Court' | 'Membership' | 'Coaching'; note?: string }) => {
-      if (DEMO) {
-        update((d) => {
-          d.transactions.push({
-            id: uid('rev'), type: 'revenue', date: a.onDate, forMonth: a.onDate.slice(0, 7),
-            amount: a.amount, category: a.kind, source: a.kind === 'Court' ? 'court_booking'
-              : a.kind === 'Membership' ? 'membership' : 'other',
-            note: a.note, createdAt: a.onDate,
-          } as never)
-        })
-        return Promise.resolve({ ok: true, message: '' })
-      }
-      return write('add revenue', () => cloudAddRevenue(a))
-    },
-    [write, update],
+    (a: { label: string; amount: number; onDate: string; kind: 'Court' | 'Membership' | 'Coaching'; note?: string }) =>
+      write('add revenue', () => cloudAddRevenue(a)),
+    [write],
   )
 
   const addExpense = useCallback(
-    (a: { category: string; amount: number; onDate: string; note?: string }) => {
-      if (DEMO) {
-        update((d) => {
-          d.transactions.push({
-            id: uid('exp'), type: 'expense', date: a.onDate, amount: a.amount,
-            category: a.category, note: a.note, createdAt: a.onDate,
-          } as never)
-        })
-        return Promise.resolve({ ok: true, message: '' })
-      }
-      return write('add expense', () => cloudAddExpense(a))
-    },
-    [write, update],
+    (a: { category: string; amount: number; onDate: string; note?: string }) =>
+      write('add expense', () => cloudAddExpense(a)),
+    [write],
   )
 
   const saveStaff = useCallback(
-    (a: { id?: string; name: string; role: string; phone?: string; active?: boolean }) => {
-      if (DEMO) {
-        update((d) => demoSaveStaff(d, a))
-        return Promise.resolve({ ok: true, message: '' })
-      }
-      return write('save staff', () => cloudSaveStaff({ ...a, id: a.id ? Number(a.id) : undefined }))
-    },
-    [write, update],
+    (a: { id?: string; name: string; role: string; phone?: string; active?: boolean }) =>
+      write('save staff', () => cloudSaveStaff({ ...a, id: a.id ? Number(a.id) : undefined })),
+    [write],
   )
 
   const removeStaff = useCallback(
-    (id: string) => {
-      if (DEMO) {
-        update((d) => {
-          d.staff = d.staff.filter((s) => s.id !== id)
-        })
-        return Promise.resolve({ ok: true, message: '' })
-      }
-      return write('delete staff', () => cloudDeleteStaff(Number(id)))
-    },
-    [write, update],
+    (id: string) => write('delete staff', () => cloudDeleteStaff(Number(id))),
+    [write],
   )
 
   const markStaffDay = useCallback(
-    (a: { coachId: string; date: string; status: 'present' | 'absent' }) => {
-      if (DEMO) {
-        update((d) => {
-          const hit = d.attendance.find((r) => r.staffId === a.coachId && r.date === a.date)
-          if (hit) hit.status = a.status
-          else d.attendance.push({ staffId: a.coachId, date: a.date, status: a.status } as never)
-        })
-        return Promise.resolve({ ok: true, message: '' })
-      }
-      return write('mark attendance', () => cloudMarkStaffDay(a))
-    },
-    [write, update],
+    (a: { coachId: string; date: string; status: 'present' | 'absent' }) =>
+      write('mark attendance', () => cloudMarkStaffDay(a)),
+    [write],
   )
 
   const logReminderSent = useCallback(
-    (a: { enrollmentId: number; stage: string; amount: number | null; phone: string | null; body: string; channel: 'whatsapp' | 'sms' | 'call' }) => {
-      // The WhatsApp message still goes out for real; only the audit row
-      // has nowhere to land.
-      if (DEMO) return Promise.resolve({ ok: true, message: '' })
-      return write('log reminder', () => cloudLogReminderSent(a))
-    },
+    (a: { enrollmentId: number; stage: string; amount: number | null; phone: string | null; body: string; channel: 'whatsapp' | 'sms' | 'call' }) =>
+      write('log reminder', () => cloudLogReminderSent(a)),
     [write],
   )
 
   const removeEntry = useCallback(
-    (a: { kind: 'payment' | 'expense'; id: number }) => {
-      if (DEMO) {
-        const prefix = a.kind === 'payment' ? 'pay_' : 'exp_'
-        update((d) => {
-          d.transactions = d.transactions.filter(
-            (t) => t.id !== String(a.id) && t.id !== prefix + a.id,
-          )
-        })
-        return Promise.resolve({ ok: true, message: '' })
-      }
-      return write('delete entry', () =>
+    (a: { kind: 'payment' | 'expense'; id: number }) =>
+      write('delete entry', () =>
         a.kind === 'payment' ? cloudVoidPayment(a.id, 'removed by owner') : cloudDeleteExpense(a.id),
-      )
-    },
-    [write, update],
+      ),
+    [write],
   )
 
   /* Has anything been paid since this spell began?
@@ -595,13 +487,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       paidNow?: number
       note?: string
     }) => {
-      if (DEMO) {
-        /* Add, edit and discontinue, locally. The four-way routing the
-           real path does off memberId/enrollmentId does not apply: there
-           are no enrolment rows here, so a student is just a row. */
-        update((d) => demoSaveStudent(d, input))
-        return { ok: true, message: '' }
-      }
       if (!isSignedIn()) {
         return { ok: false, message: 'Not signed in to the academy database.' }
       }
@@ -736,23 +621,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setAuthed(false)
   }, [])
 
-  /* No PIN, no password, no session — the data is already local. Only
-     reachable while DEMO is true; with it false the landing goes back to
-     opening the PIN sheet and this is never called. */
-  const enterDemo = useCallback(() => {
-    if (DEMO) setAuthed(true)
-  }, [])
-
   const value = useMemo<Ctx>(
     () => ({
       data, update,
-      authed, login, enrol, enrolled: vault.isEnrolled(), logout, enterDemo, toasts, toast,
+      authed, login, enrol, enrolled: vault.isEnrolled(), logout, toasts, toast,
       loading, loadError, refresh, saveStudent,
       saveBatch, removeBatch, recordFee, addRevenue, addExpense,
       saveStaff, removeStaff, markStaffDay, logReminderSent, removeEntry,
     }),
     [data, update,
-     authed, login, enrol, logout, enterDemo, toasts, toast, loading, loadError, refresh, saveStudent,
+     authed, login, enrol, logout, toasts, toast, loading, loadError, refresh, saveStudent,
      saveBatch, removeBatch, recordFee, addRevenue, addExpense,
      saveStaff, removeStaff, markStaffDay, logReminderSent, removeEntry],
   )

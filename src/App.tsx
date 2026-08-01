@@ -15,7 +15,6 @@ import { overdueReminders, unmarkedToday } from './lib/selectors'
 import { useNativeShell } from './lib/native'
 import BrandMark from './components/BrandMark'
 import { ACADEMY } from './lib/academy'
-import { DEMO } from './lib/demo'
 
 import Landing from './pages/Landing'
 import Pay from './pages/Pay'
@@ -95,16 +94,7 @@ export default function App() {
      cosmetic problem — the screen is empty and the owner has no idea
      why. Say which, and offer the retry, rather than showing an app
      that looks like an academy with no students. */
-  /* Demo mode is loud on purpose. The whole point of the switch is that
-     it gets turned off again, and the failure mode of forgetting is the
-     owner running his academy on invented students — every figure
-     plausible, none of them his. A strip he cannot miss costs nothing
-     while it is true and everything if it is ever wrong. */
-  const banner = DEMO ? (
-    <div className="loadbar loadbar--demo">
-      <span>Demo mode — login is off and this data is not real.</span>
-    </div>
-  ) : loadError ? (
+  const banner = loadError ? (
     <div className="loadbar loadbar--bad" role="alert">
       <span>{loadError}</span>
       <button type="button" onClick={() => void refresh()}>

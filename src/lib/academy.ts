@@ -96,8 +96,13 @@ export const ACADEMY = {
      {academy} {owner} {paylink} {upi} {payee}
      Blocks are joined with a blank line between them.
      ---------------------------------------------------------------- */
+  /* No {batch}. The parent knows which batch their child is in and does
+     not need it read back to them; it only made the sentence longer and
+     turned an internal label ("Kids Batch A") into something they were
+     asked to recognise. {batch} still resolves if a custom message wants
+     it. */
   reminderTemplate:
-    'A gentle note from {academy} 🏸 — {student}’s {batch} fee for {months} ' +
+    'A gentle note from {academy} 🏸 — {student}’s fee for {months} ' +
     'comes to *{amount}*.',
 
   /**
