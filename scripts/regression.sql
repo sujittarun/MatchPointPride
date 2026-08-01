@@ -1,3 +1,10 @@
+-- ============================================================
+-- This harness writes to SHARED tables. It refuses to run on
+-- production, where a failed rollback is a data incident for
+-- every academy — not just this one. (0040)
+-- ============================================================
+select assert_test_environment();
+
 -- End-to-end regression for tenant mpp, against LIVE data.
 -- Everything happens inside one transaction and the final RAISE rolls
 -- the whole lot back, so no real row is left changed.
