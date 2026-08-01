@@ -142,6 +142,17 @@ storage is cleared after seven days of Safari use without opening the
 site, which would wipe the sealed session and send the owner back to his
 password.
 
+**Deleting a payment is a void, not a delete.** `void_payment` sets
+`status = 'void'` and keeps the row — the reversal is a fact worth
+keeping, and it writes a `member_timeline` note. So anything reading
+`payments` must look at `status`, and `mapping.ts` is the one place
+that does it: `isSettled()` allows `paid` and `null` and excludes
+everything else. It is an allow-list on purpose — there is **no check
+constraint** on `payments.status`, it is free text defaulting to
+`'paid'`, so an unrecognised value has to be excluded rather than
+assumed good. Telling the owner a parent has paid when they have not is
+the one mistake this app must not make.
+
 **Two things were removed rather than faked.** One-off custom reminders
 and cancel/delete on a fee reminder: the list is `reminder_queue()`'s
 answer, recomputed on every read, so anything written to it locally
@@ -153,7 +164,7 @@ rows behind them.
 
 ```bash
 npm install && npm run dev
-npm test        # 242 assertions
+npm test        # 342 assertions, plus the session-security check
 ```
 
 `npm test` covers the TypeScript that is left — shaping, dates, lookup.

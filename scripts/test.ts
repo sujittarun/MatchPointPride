@@ -14,7 +14,7 @@ import {
   monthsPhrase, paidForMonth, unpaidMonthsFor,
   findExisting, phoneKey, sameName, needsACall, blockedReminders, awaitingFirstPayment,
 } from '../src/lib/selectors'
-import { assemble, toStudents } from '../src/lib/mapping'
+import { assemble, toStudents, toTransactions } from '../src/lib/mapping'
 import type { BatchRow, EnrollmentRow, MemberRow } from '../src/lib/cloud'
 import { buildEmptyData, buildSeedData } from '../src/lib/seed'
 import * as vault from '../src/lib/vault'
@@ -177,6 +177,54 @@ ok('seed: no duplicate student ids',
 ok('seed: fee due days within 1..28',
   seed.students.every((s) => s.feeDueDay >= 1 && s.feeDueDay <= 28))
 ok('seed: all amounts positive', seed.transactions.every((t) => t.amount > 0))
+
+/* ========= voided payments are not revenue =========
+   void_payment does not delete — it sets status='void' and leaves the
+   row. toTransactions used to map every row to positive revenue
+   without ever reading status, so deleting a payment took the money
+   out of nothing: the row stayed in the ledger at full value and no
+   total moved. ================================================= */
+{
+  const pay = (id: number, amount: number, status: string | null) => ({
+    id, member_id: 1, enrollment_id: 7, type: 'Coaching', kind: 'renewal',
+    amount, mode: 'UPI', on_date: '2026-07-10',
+    period_from: '2026-07-01', period_to: '2026-08-01',
+    status, ref: null, note: null, proof_path: null,
+  })
+
+  const mixed = toTransactions([pay(1, 1000, 'paid'), pay(2, 2000, 'void')], [])
+  eq('voided row is not listed', mixed.length, 1)
+  eq('voided amount is not revenue', monthTotals(mixed, '2026-07').revenue, 1000)
+  eq('...nor in the bar chart', moneyByMonth(mixed, ['2026-07'])[0].revenue, 1000)
+  eq('...nor in the donut', revenueBySource(mixed, '2026-07')[0].value, 1000)
+
+  // The owner's only payment was entered in error and voided.
+  const onlyVoid = toTransactions([pay(2, 2000, 'void')], [])
+  eq('a voided-only ledger is empty', onlyVoid.length, 0)
+  eq('a voided-only month collected nothing', monthTotals(onlyVoid, '2026-07').revenue, 0)
+
+  // Unverified money is not collected money.
+  eq('pending_verification is not revenue',
+     toTransactions([pay(3, 5000, 'pending_verification')], []).length, 0)
+
+  // An allow-list, because the two failures are not symmetric: telling
+  // the owner a parent has paid when they have not is the one mistake
+  // this app must not make.
+  eq('an unknown future status is excluded',
+     toTransactions([pay(5, 9999, 'refunded_by_bank')], []).length, 0)
+  eq('a null status is an old row, not a reversed one',
+     toTransactions([pay(4, 750, null)], []).length, 1)
+
+  // A student whose only payment was voided must not read as settled.
+  const d: AppData = JSON.parse(JSON.stringify(buildEmptyData()))
+  const bt = d.batches[0]
+  d.students.push({ id: '1', name: 'V', batchId: bt.id, phone: '9', joinedOn: '2026-01-01',
+                    monthlyFee: 2000, feeDueDay: 1, active: true })
+  d.transactions = toTransactions([pay(2, 2000, 'void')], [])
+  const cr = collectionRate(d, '2026-07')
+  eq('voided payment does not count as collected', cr.collected, 0)
+  eq('voided payment does not count as paid', cr.paid, 0)
+}
 
 /* ================= collectionRate semantics ================= */
 {
@@ -893,7 +941,11 @@ ok('every future start agrees, whichever screen set it', (() => {
     payments: [
       { id: 100, member_id: 1, enrollment_id: 10, type: 'revenue', kind: 'student_fee',
         amount: 2000, mode: 'upi', on_date: '2026-07-05', period_from: '2026-07-01',
-        period_to: '2026-07-31', status: 'confirmed', ref: null, note: null, proof_path: null },
+        period_to: '2026-07-31', status: 'paid', ref: null, note: null, proof_path: null },
+      // 'paid', not the 'confirmed' this fixture used to invent. There is no
+      // check constraint on payments.status — it is free text defaulting to
+      // 'paid' — so a made-up value parses, stores and reads back happily, and
+      // a fixture using one tests nothing that can happen.
     ],
     expenses: [{ id: 200, category: 'rent', payee: 'Landlord', detail: null,
                  amount: 15000, mode: 'bank', on_date: '2026-07-01' }],

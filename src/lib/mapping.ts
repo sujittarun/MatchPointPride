@@ -202,8 +202,38 @@ export function toReminders(due: DueRow[], students: Student[]): Reminder[] {
   })
 }
 
+/**
+ * Is this row money the academy actually has?
+ *
+ * `void_payment` does not delete — it sets `status = 'void'` and leaves
+ * the row, which is correct (the reversal is a fact worth keeping, and
+ * it writes a `member_timeline` note). But this file read every payment
+ * row and mapped it to positive revenue without ever looking at
+ * `status`, so deleting a payment took the money out of nothing. The
+ * row stayed in the ledger at full value, "Net this month" did not
+ * move, and a student whose only payment had been voided still read as
+ * 100% collected.
+ *
+ * An ALLOW-list, not a deny-list. The two failures are not symmetric:
+ * counting money that is not there tells the owner a parent has paid
+ * when they have not, and that is the one mistake a fee-collection app
+ * must not make. So an unrecognised future status is excluded rather
+ * than assumed good. `null` counts — the column is nullable in the
+ * type and a missing status is an old row, not a reversed one.
+ *
+ * `pending_verification` is excluded on the same principle: unverified
+ * money is not collected money. This app cannot currently create one —
+ * it never sends `p_status`, so `record_fee_payment` defaults to
+ * 'paid' — but other tenants have them. If that ever becomes reachable
+ * here it needs a visible "awaiting verification" treatment, because
+ * silently omitting money a parent says they sent is its own bug.
+ */
+function isSettled(p: PaymentRow): boolean {
+  return p.status == null || p.status === 'paid'
+}
+
 export function toTransactions(payments: PaymentRow[], expenses: ExpenseRow[]): Transaction[] {
-  const rev: Transaction[] = payments.map((p) => ({
+  const rev: Transaction[] = payments.filter(isSettled).map((p) => ({
     id: `pay_${p.id}`,
     type: 'revenue',
     date: p.on_date,
