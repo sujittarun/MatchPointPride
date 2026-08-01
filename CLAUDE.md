@@ -119,6 +119,23 @@ screenshots now go to the private `payment-proofs` bucket, keyed
 `<tenant>/<payment_id>.<ext>`, read back through a short-lived signed
 URL. Never make that bucket public: they are bank screenshots.
 
+**The Supabase session is held in memory only.** Not localStorage, not
+sessionStorage, not a cookie. This paragraph used to say "nothing else"
+while `cloud.ts` wrote the whole session — refresh token included — to
+`localStorage['mpp.session.v1']`, one key away from the vault that
+exists to encrypt that exact token. The ciphertext was strong and the
+plaintext lay beside it, so the PIN, the 600k PBKDF2 iterations and the
+attempt ladder all guarded a door that stood open: one `getItem` and
+you hold a durable credential for the tenant.
+
+The consequence is that a reload or a restart asks for the PIN, which
+is what `vault.ts` always described — "every day after that, the PIN
+decrypts that token and swaps it for a fresh session". `authed` is
+derived from whether a session exists rather than kept as a separate
+flag, so the two cannot disagree and the app can never open signed-in
+with nothing behind it. `scripts/session.ts` asserts that no credential
+reaches storage; `npm test` runs it.
+
 The app ships a manifest so a home-screen icon on iOS is a real
 installed app rather than a Safari bookmark. Without it, script-writable
 storage is cleared after seven days of Safari use without opening the

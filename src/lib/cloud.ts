@@ -29,10 +29,37 @@ const ANON =
 
 export const TENANT = 'mpp'
 
-const SESSION_KEY = 'mpp.session.v1'
+/* The key this used to be written under. Kept only to delete it — every
+   phone that has ever run this app has a refresh token sitting in it. */
+const LEGACY_SESSION_KEY = 'mpp.session.v1'
 
 /* ---------------------------------------------------------------
    Session
+
+   IN MEMORY ONLY. It is never written to localStorage, sessionStorage,
+   IndexedDB or a cookie.
+
+   It used to be JSON.stringify'd into localStorage whole — refresh
+   token and all — one key away from the vault that exists to encrypt
+   exactly that token. `vault.ts` derives an AES key from the PIN at
+   600k PBKDF2 iterations so the refresh token cannot be read without
+   it; `mpp.session.v1` then published the same token in plaintext. The
+   ciphertext was strong and the plaintext was sitting beside it.
+
+   What that cost, concretely: a refresh token is the DURABLE
+   credential. Anyone with a moment on the unlocked phone, or any script
+   running on the page, could read one key and mint fresh access tokens
+   for tenant mpp indefinitely — no PIN, no password. The attempt ladder
+   never applied, because nothing had to go through the PIN at all.
+
+   So the vault is the only thing on disk, which is what CLAUDE.md
+   already claimed: "the sealed session vault and the PIN attempt
+   ladder. Nothing else."
+
+   The cost of memory-only is one PIN entry after a reload or a restart.
+   That is the design in vault.ts stated out loud — "every day after
+   that, the PIN decrypts that token and swaps it for a fresh session" —
+   and on a home-screen PWA a reload is rare.
    --------------------------------------------------------------- */
 
 type Session = {
@@ -45,27 +72,27 @@ type Session = {
   tenant: string
 }
 
-let session: Session | null = readSession()
+let session: Session | null = null
 
-function readSession(): Session | null {
+/**
+ * Remove the plaintext session this app used to persist.
+ *
+ * Runs at module load, before anything can read it, and is why the
+ * constant above still exists. Without this the leaked token stays on
+ * the owner's phone for ever — fixing the write does nothing for a
+ * device that already made it.
+ */
+function purgeLegacySession(): void {
   try {
-    const raw = localStorage.getItem(SESSION_KEY)
-    if (!raw) return null
-    const s = JSON.parse(raw) as Session
-    return s?.access_token ? s : null
+    localStorage.removeItem(LEGACY_SESSION_KEY)
   } catch {
-    return null
+    /* storage blocked — nothing was readable there either */
   }
 }
+purgeLegacySession()
 
 function writeSession(s: Session | null): void {
   session = s
-  try {
-    if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s))
-    else localStorage.removeItem(SESSION_KEY)
-  } catch {
-    /* storage full or blocked — the in-memory session still works */
-  }
 }
 
 /** Claims are read for display only; RLS is what actually enforces them. */

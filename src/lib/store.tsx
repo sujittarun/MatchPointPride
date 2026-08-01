@@ -39,7 +39,6 @@ import {
 import * as vault from './vault'
 import { assemble } from './mapping'
 
-const AUTH_KEY = 'mpp.auth.v1'
 const ATTEMPTS_KEY = 'mpp.pin.attempts'
 
 /* ------------------------------------------------------------------
@@ -214,13 +213,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   if (initial.current === null) initial.current = load()
 
   const [data, setData] = useState<AppData>(initial.current.data)
-  const [authed, setAuthed] = useState<boolean>(() => {
-    try {
-      return sessionStorage.getItem(AUTH_KEY) === '1'
-    } catch {
-      return false
-    }
-  })
+  /* Signed in means "there is a session in memory", not "a flag says so".
+     They used to be separate: the flag lived in sessionStorage and the
+     session in localStorage, so they could disagree — and once the
+     session stopped being persisted, a surviving flag would have opened
+     the app with no session behind it, which reads as an academy with
+     no students rather than as a locked door. Deriving it removes the
+     pair that could disagree instead of keeping them in step. */
+  const [authed, setAuthed] = useState<boolean>(() => isSignedIn())
   const [toasts, setToasts] = useState<Toast[]>([])
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -319,11 +319,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           await vault.reseal(code, rotated)
           writeAttempts({ count: 0, until: 0 })
           setAuthed(true)
-          try {
-            sessionStorage.setItem(AUTH_KEY, '1')
-          } catch {
-            /* session storage unavailable — logged in for this render only */
-          }
           return true
         }
         // Right PIN, dead token: the session was revoked or expired.
@@ -607,11 +602,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await vault.enrol({ pin, refreshToken: token, email: s.email || email })
         writeAttempts({ count: 0, until: 0 })
         setAuthed(true)
-        try {
-          sessionStorage.setItem(AUTH_KEY, '1')
-        } catch {
-          /* fine */
-        }
         return { ok: true, message: '' }
       } catch (err) {
         return {
@@ -626,11 +616,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     cloudSignOut()
     setAuthed(false)
-    try {
-      sessionStorage.removeItem(AUTH_KEY)
-    } catch {
-      /* nothing to clear */
-    }
   }, [])
 
   const value = useMemo<Ctx>(

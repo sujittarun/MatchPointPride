@@ -9,7 +9,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "esbuild scripts/test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/mpp-test.cjs --log-level=error && node node_modules/.cache/mpp-test.cjs"
+    "test": "npm run test:unit --silent && npm run test:session --silent",
+    "test:unit": "esbuild scripts/test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/mpp-test.cjs --log-level=error && node node_modules/.cache/mpp-test.cjs",
+    "test:session": "esbuild scripts/session.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/mpp-session.cjs --log-level=error && node node_modules/.cache/mpp-session.cjs"
   },
   "dependencies": {
     "react": "^18.3.1",
