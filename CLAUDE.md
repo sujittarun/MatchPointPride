@@ -142,6 +142,54 @@ storage is cleared after seven days of Safari use without opening the
 site, which would wipe the sealed session and send the owner back to his
 password.
 
+## The Android app is this app
+
+Capacitor, not a port. The APK carries the same React bundle, the same
+`cloud.ts`, the same CSS — so there is nothing to keep in step, and no
+screen that exists in one place and not the other. A React Native build
+would have meant reimplementing ~6,000 lines of pages and 1,900 lines of
+CSS in a different rendering model; two implementations of one screen
+disagree, which is the argument this file already makes about money,
+applied to pixels.
+
+**Do not add an Android-only screen.** If the phone needs something the
+web does not, it goes behind `isNative` in the shared component, not
+into a second copy of the page.
+
+Four files and one directory are all the difference:
+
+| | |
+|---|---|
+| `capacitor.config.ts` | app id `in.matchpoint.pride`, splash, `androidScheme: 'https'` |
+| `src/lib/native.ts` | splash dismissal, back gesture, refresh on resume. No-op on the web |
+| `src/lib/dismiss.ts` | the stack of open sheets the back gesture closes, newest first |
+| `src/components/BrandMark.tsx` | the mark. Its path data is duplicated into two Android vectors and `scripts/icons.mjs` — change one, run `npm run icons`, change all four |
+| `android/` | the Gradle project. Committed; its build output is not |
+
+**`androidScheme: 'https'` is load-bearing.** It makes the WebView
+origin `https://localhost`, which is a secure context. On an insecure
+origin `crypto.subtle` does not exist, and `vault.ts` is a key
+derivation, not a comparison — the PIN screen would fail to open the
+vault on every device.
+
+**Safe areas already work; do not add insets.** Capacitor 8's built-in
+`SystemBars` plugin either passes the real insets through to
+`env(safe-area-inset-*)` (WebView 140+, which needs the
+`viewport-fit=cover` that `index.html` already has) or pads the WebView
+itself and reports zero. Reading its `--safe-area-inset-*` variables
+*as well* would double-count on the second path.
+
+`allowBackup` is off. Android's Auto Backup would copy the sealed vault
+to the owner's Google Drive; it is ciphertext, but a four-digit PIN is
+protected by the attempt ladder in the app, and a copy outside the app
+is a copy the ladder cannot guard. A reinstall asks for the password
+again, which is what this file already says happens.
+
+Building needs a JDK 21 and the Android SDK; `scripts/android.sh` finds
+both. Release signing reads `android/keystore.properties` if it exists
+and is otherwise skipped, so an unsigned release APK fails loudly at
+install rather than a debug key quietly shipping.
+
 **Deleting a payment is a void, not a delete.** `void_payment` sets
 `status = 'void'` and keeps the row — the reversal is a fact worth
 keeping, and it writes a `member_timeline` note. So anything reading
@@ -164,7 +212,8 @@ rows behind them.
 
 ```bash
 npm install && npm run dev
-npm test        # 342 assertions, plus the session-security check
+npm test              # 342 assertions, plus the session-security check
+npm run android:apk   # the same app, as an installable APK
 ```
 
 `npm test` covers the TypeScript that is left — shaping, dates, lookup.
@@ -187,4 +236,6 @@ simulated — a narrated life cycle over arithmetic that no longer runs
 here proved only that the simulation agreed with itself.
 
 Phone-first: bottom tab bar, bottom-sheet modals, 44px targets. Designed
-at 375×812 — check there, not on a desktop.
+at 375×812 — check there, not on a desktop. The Android build is the
+same pixels; an emulator screenshot and a 375-wide browser window agree,
+which is the point of not having written it twice.

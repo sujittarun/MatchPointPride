@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The complete mark — lime tile, ink shuttlecock — as one drawable.
+
+     The adaptive icon splits these into two layers because a launcher
+     needs to mask and parallax them separately. Everywhere else that
+     wants the logo (the splash, and the system splash icon on API 31+)
+     wants it whole, and the corner radius back: 32.4/108 is the same
+     30% BrandMark rounds its tile by.
+
+     A vector, not a PNG, so the splash is one file instead of ten and
+     is exact at every density. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M32.4,0 H75.6 A32.4,32.4 0 0 1 108,32.4 V75.6 A32.4,32.4 0 0 1 75.6,108 H32.4 A32.4,32.4 0 0 1 0,75.6 V32.4 A32.4,32.4 0 0 1 32.4,0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="27"
+                android:startY="7.2"
+                android:endX="81"
+                android:endY="100.8">
+                <item android:offset="0" android:color="#C8FF4D" />
+                <item android:offset="1" android:color="#A3D62F" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <group
+        android:scaleX="2.61"
+        android:scaleY="2.61"
+        android:translateX="22.68"
+        android:translateY="22.68">
+        <path
+            android:fillColor="#0B1004"
+            android:pathData="M8.05,4.3 H15.95 A1.05,1.05 0 0 1 17,5.35 V6.4 H7 V5.35 A1.05,1.05 0 0 1 8.05,4.3 Z M7,6 H8.7 L10.44,15.2 H9.9 Z M9.3,6 H10.7 L11.28,15.2 H11.04 Z M11.3,6 H12.7 L12.12,15.2 H11.88 Z M13.3,6 H14.7 L12.96,15.2 H12.72 Z M15.3,6 H17 L14.1,15.2 H13.56 Z" />
+        <path
+            android:fillColor="#0B1004"
+            android:pathData="M10.1,14.9 H13.9 V17.8 A1.9,1.9 0 0 1 12,19.7 A1.9,1.9 0 0 1 10.1,17.8 Z" />
+    </group>
+</vector>

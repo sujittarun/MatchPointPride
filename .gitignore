@@ -1,5 +1,9 @@
 node_modules
 dist
+# The Android web bundle. `android/` itself is committed — it holds the
+# icon, the manifest and the theme — but its copy of the built assets
+# under app/src/main/assets/public is not (see android/.gitignore).
+dist-android
 dist-ssr
 *.local
 .DS_Store

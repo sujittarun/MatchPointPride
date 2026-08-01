@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The same three values as src/styles/tokens.css. They are duplicated
+     because a Gradle build cannot read a stylesheet, so if the brand
+     moves, it moves in both places. Nothing computes here; these are
+     the colours the system paints in the fraction of a second before
+     and around the WebView. -->
+<resources>
+    <!-- ––plane: the app's deepest surface -->
+    <color name="plane">#080B0F</color>
+    <!-- ––brand: shuttle lime -->
+    <color name="brand">#C8FF4D</color>
+    <!-- ––brand-ink: what sits on top of the lime -->
+    <color name="brand_ink">#0B1004</color>
+</resources>

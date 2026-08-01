@@ -51,6 +51,22 @@ function sessionId(): string | null {
   }
 }
 
+/* 'android' inside the APK, 'web' everywhere else.
+
+   Read off the global rather than imported from @capacitor/core, so
+   this file stays importable by the Node test harness, which bundles
+   it with esbuild and has no WebView, no window and no bridge. The
+   global is set by the native bridge before the bundle runs, and by
+   @capacitor/core itself when the app imports it. */
+const platform: string = (() => {
+  try {
+    const cap = (globalThis as { Capacitor?: { getPlatform?: () => string } }).Capacitor
+    return cap?.getPlatform?.() ?? 'web'
+  } catch {
+    return 'web'
+  }
+})()
+
 function viewport(): string {
   try {
     return `${window.innerWidth}x${window.innerHeight}`
@@ -122,7 +138,7 @@ function post(name: string, props: Record<string, unknown>): void {
  * has stopped opening the app, and that is worth knowing.
  */
 export function trackOpen(): void {
-  post('page_view', { ver: VER, ua: device(), vw: viewport() })
+  post('page_view', { ver: VER, plat: platform, ua: device(), vw: viewport() })
 }
 
 export function reportError(e: ErrorReport): void {
@@ -139,6 +155,12 @@ export function reportError(e: ErrorReport): void {
         stack: e.stack ? String(e.stack).slice(0, 300) : null,
         kind: e.kind ?? 'crash',
         ver: VER,
+        // The same version number ships to the Play Store and to
+        // GitHub Pages, so without this there is no way to tell a
+        // crash in the installed app from one in the browser — and
+        // they have different WebViews. platform_errors() groups on
+        // message and version, so an extra prop splits nothing.
+        plat: platform,
         ua: device(),
         vw: viewport(),
       role: 'owner', // single-operator app; there is no other role

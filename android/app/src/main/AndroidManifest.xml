@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- allowBackup is off deliberately. Android's Auto Backup would
+         copy this app's local storage to the owner's Google Drive, and
+         the one thing in that storage is the sealed vault — the
+         Supabase refresh token from vault.ts. It is encrypted under the
+         PIN, so this is not a leak; but a four-digit PIN's protection
+         is the attempt ladder in the app, and a copy of the ciphertext
+         sitting in a cloud account is a copy the ladder cannot guard.
+         The cost is that a reinstall asks for the password again, which
+         is exactly what CLAUDE.md already says happens. -->
+    <application
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <!-- windowSoftInputMode: the WebView has to shrink when the
+             keyboard opens, or a bottom sheet's Save button sits under
+             it with no way to reach it. Capacitor pads the WebView from
+             the IME inset, which only arrives if the window resizes.
+
+             screenOrientation: the app is drawn at 375x812 and the web
+             manifest already declares portrait. There is no landscape
+             layout to rotate into. -->
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize"
+            android:screenOrientation="portrait"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+    </application>
+
+    <!-- Permissions -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>

@@ -1,7 +1,8 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { IconAlert, IconArrowDown, IconArrowUp, IconX } from '../icons'
 import { useStore } from '../../lib/store'
+import { pushDismiss } from '../../lib/dismiss'
 
 /* ------------------------------------------------------------------
    Bottom-sheet modal
@@ -22,19 +23,32 @@ export function Sheet({
   children: ReactNode
   footer?: ReactNode
 }) {
+  /* Read by the two handlers below, which are registered once per open
+     rather than on every render. Callers pass an inline arrow for
+     `onClose`, so its identity changes constantly; without this, the
+     dismiss stack would be popped and re-pushed on each keystroke in a
+     form inside the sheet, and a nested sheet's ordering would shuffle
+     underneath it. */
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+
   useEffect(() => {
     if (!open) return
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') closeRef.current()
     }
     window.addEventListener('keydown', onKey)
+    // Escape on a keyboard, the back gesture on Android: same intent,
+    // so the same handler answers both.
+    const unregister = pushDismiss(() => closeRef.current())
     return () => {
       document.body.style.overflow = prev
       window.removeEventListener('keydown', onKey)
+      unregister()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 

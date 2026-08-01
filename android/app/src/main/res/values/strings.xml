@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Match Point Pride</string>
+    <string name="title_activity_main">Match Point Pride</string>
+    <string name="package_name">in.matchpoint.pride</string>
+    <string name="custom_url_scheme">in.matchpoint.pride</string>
+</resources>

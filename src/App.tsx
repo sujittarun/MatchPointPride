@@ -12,6 +12,7 @@ import {
   IconStaff,
 } from './components/icons'
 import { overdueReminders, unmarkedToday } from './lib/selectors'
+import { useNativeShell } from './lib/native'
 import BrandMark from './components/BrandMark'
 import { ACADEMY } from './lib/academy'
 
@@ -46,6 +47,12 @@ const TITLES: Record<string, string> = {
 export default function App() {
   const path = useRoute()
   const { authed, data, logout, loading, loadError, refresh } = useStore()
+
+  /* The Android shell: back gesture, splash, refresh on resume. A no-op
+     in a browser. Called above the early return on purpose — the back
+     gesture has to work on the locked gate too, where the only screen
+     rendered is Landing. */
+  useNativeShell(refresh)
 
   // Anything under the shell requires the gate; bounce back to landing.
   useEffect(() => {
