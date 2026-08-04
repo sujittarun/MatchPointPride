@@ -16,9 +16,10 @@
     "android:release": "npm run android:sync && scripts/android.sh bundleRelease assembleRelease",
     "android:open": "npm run android:sync && cap open android",
     "icons": "node scripts/icons.mjs",
-    "test": "npm run test:unit --silent && npm run test:session --silent",
+    "test": "npm run test:unit --silent && npm run test:session --silent && npm run test:reload --silent",
     "test:unit": "esbuild scripts/test.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/mpp-test.cjs --log-level=error && node node_modules/.cache/mpp-test.cjs",
-    "test:session": "esbuild scripts/session.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/mpp-session.cjs --log-level=error && node node_modules/.cache/mpp-session.cjs"
+    "test:session": "esbuild scripts/session.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/mpp-session.cjs --log-level=error && node node_modules/.cache/mpp-session.cjs",
+    "test:reload": "esbuild scripts/session-reload.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/mpp-reload.cjs --log-level=error && node node_modules/.cache/mpp-reload.cjs fresh && node node_modules/.cache/mpp-reload.cjs expired && node node_modules/.cache/mpp-reload.cjs tenant"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.1",

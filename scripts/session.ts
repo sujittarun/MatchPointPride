@@ -1,4 +1,4 @@
-/* Does a credential ever reach the disk?
+/* Does the DURABLE credential ever reach the disk?
    npm test runs this after the unit suite.
 
    It is separate from scripts/test.ts because it has to drive the real
@@ -12,7 +12,20 @@
    encrypt that exact token. The ciphertext was strong and the plaintext
    was lying beside it. Nothing failed, no test went red, and the app
    worked perfectly — which is what makes it worth a test rather than a
-   comment. */
+   comment.
+
+   The line the app now draws, and what this file holds it to:
+
+     REFRESH token — durable, mints sessions for ever, never written
+                     anywhere but the AES-GCM vault. Asserted below
+                     against localStorage AND sessionStorage.
+     ACCESS token  — expires in an hour on its own. Allowed in
+                     sessionStorage (tab-scoped, dies with the app) so a
+                     reload does not demand the PIN. Asserted to be
+                     there, and asserted NOT to be in localStorage.
+
+   So "no credential on disk" became "no DURABLE credential on disk",
+   and the test says which is which rather than banning both. */
 
 const VAULT = '{"v":1,"blob":"sealed"}'
 const LEAKED = 'OLD_REFRESH_TOKEN_LEAKED'
@@ -41,10 +54,18 @@ const writes: string[] = []
     delete store[k]
   },
 }
+/* A real one this time — the access token is expected to land here. */
+const tab: Record<string, string> = {}
+const tabWrites: string[] = []
 ;(globalThis as never as { sessionStorage: unknown }).sessionStorage = {
-  getItem: () => null,
-  setItem() {},
-  removeItem() {},
+  getItem: (k: string) => (k in tab ? tab[k] : null),
+  setItem: (k: string, v: string) => {
+    tab[k] = v
+    tabWrites.push(k)
+  },
+  removeItem: (k: string) => {
+    delete tab[k]
+  },
 }
 
 /* app_metadata carries the claims signIn checks; the signature is never
@@ -85,9 +106,19 @@ void (async () => {
   ok('signIn persists nothing', writes.length === 0, writes.join(', '))
 
   const dump = JSON.stringify(store)
-  ok('no refresh token anywhere in storage', !dump.includes(REFRESH))
+  const tabDump = JSON.stringify(tab)
+
+  // The durable credential, in either store. This is the whole point.
+  ok('no refresh token in localStorage', !dump.includes(REFRESH))
+  ok('no refresh token in sessionStorage', !tabDump.includes(REFRESH))
   ok('no leaked refresh token either', !dump.includes(LEAKED))
-  ok('no access token in storage', !dump.includes(jwt))
+  ok('no access token in localStorage', !dump.includes(jwt))
+
+  // The short-lived one is allowed exactly one home, so a reload does
+  // not ask for the PIN.
+  ok('access token IS kept for the tab', tabDump.includes(jwt))
+  ok('tab copy carries no refresh_token key', !tabDump.includes('refresh_token'))
+  ok('tab copy is the one key', Object.keys(tab).join() === 'mpp.tab.v1', Object.keys(tab).join())
 
   // Still reachable in memory — the vault has to be able to seal it.
   ok('refreshToken() returns it from memory', c.refreshToken() === REFRESH)
@@ -95,7 +126,8 @@ void (async () => {
 
   c.signOut()
   ok('signOut drops the session', !c.isSignedIn())
-  ok('signOut persists nothing', writes.length === 0, writes.join(', '))
+  ok('signOut persists nothing to localStorage', writes.length === 0, writes.join(', '))
+  ok('signOut clears the tab copy', Object.keys(tab).length === 0, Object.keys(tab).join())
 
   if (fails.length) {
     console.log(`\n  SESSION ${pass} passed, ${fails.length} FAILED\n`)

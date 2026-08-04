@@ -262,6 +262,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setLoadError(null)
     } catch (err) {
       reportIssue('load', err)
+      /* A session restored from sessionStorage after a reload has no
+         refresh token, so once its access token expires cloud.ts ends it
+         rather than looping. When that happens the honest screen is the
+         PIN pad — the vault can mint a real session — not a red banner
+         on an empty app inviting him to press "Try again" for ever. */
+      if (!isSignedIn()) {
+        setAuthed(false)
+        return
+      }
       setLoadError(
         err instanceof Error ? err.message : 'Could not reach the academy database.',
       )

@@ -33,33 +33,44 @@ export const TENANT = 'mpp'
    phone that has ever run this app has a refresh token sitting in it. */
 const LEGACY_SESSION_KEY = 'mpp.session.v1'
 
+/** Tab-scoped, access token only. See the Session note below. */
+const TAB_KEY = 'mpp.tab.v1'
+
 /* ---------------------------------------------------------------
    Session
 
-   IN MEMORY ONLY. It is never written to localStorage, sessionStorage,
-   IndexedDB or a cookie.
+   THE REFRESH TOKEN NEVER TOUCHES STORAGE. The short-lived access
+   token is kept in sessionStorage so a reload does not demand the PIN.
 
-   It used to be JSON.stringify'd into localStorage whole — refresh
-   token and all — one key away from the vault that exists to encrypt
-   exactly that token. `vault.ts` derives an AES key from the PIN at
-   600k PBKDF2 iterations so the refresh token cannot be read without
-   it; `mpp.session.v1` then published the same token in plaintext. The
-   ciphertext was strong and the plaintext was sitting beside it.
+   Those two sentences are the whole design, and the split is the point.
+   They are not the same kind of secret:
 
-   What that cost, concretely: a refresh token is the DURABLE
-   credential. Anyone with a moment on the unlocked phone, or any script
-   running on the page, could read one key and mint fresh access tokens
-   for tenant mpp indefinitely — no PIN, no password. The attempt ladder
-   never applied, because nothing had to go through the PIN at all.
+   · the REFRESH token is DURABLE. Anyone who reads one can mint access
+     tokens for tenant mpp indefinitely — no PIN, no password, no
+     expiry to wait out, and the attempt ladder never applies because
+     nothing goes through the PIN at all. It lives in memory and, at
+     rest, only inside the AES-GCM vault that `vault.ts` seals with
+     600k PBKDF2 iterations of the PIN.
+   · the ACCESS token EXPIRES, in an hour, on its own, whatever anyone
+     does with it. It is already sent to PostgREST on every request.
 
-   So the vault is the only thing on disk, which is what CLAUDE.md
-   already claimed: "the sealed session vault and the PIN attempt
-   ladder. Nothing else."
+   This app once wrote the whole session — refresh token and all — to
+   localStorage, one key away from the vault that exists to encrypt
+   exactly that token. The ciphertext was strong and the plaintext lay
+   beside it. Removing that was right. Removing the access token WITH it
+   was over-correction: it bought no security the expiry did not already
+   provide, and it charged the owner a PIN entry for every reload.
 
-   The cost of memory-only is one PIN entry after a reload or a restart.
-   That is the design in vault.ts stated out loud — "every day after
-   that, the PIN decrypts that token and swaps it for a fresh session" —
-   and on a home-screen PWA a reload is rare.
+   sessionStorage, not localStorage, and that difference is load-bearing:
+   it is scoped to the tab and dies when the app is closed. Backgrounding
+   the app on Android keeps the WebView alive, so resuming does not ask.
+   A cold start does, because by then there is nothing left to resume
+   from — which is the behaviour vault.ts always described.
+
+   The consequence to keep in mind: after a reload the refresh token is
+   NOT in memory, so when the restored access token expires it cannot be
+   renewed. `refresh()` handles that by dropping the session, which sends
+   the owner to the PIN screen rather than into a wall of failed reads.
    --------------------------------------------------------------- */
 
 type Session = {
@@ -91,9 +102,65 @@ function purgeLegacySession(): void {
 }
 purgeLegacySession()
 
+/**
+ * The half of the session that may be written down: everything except
+ * the refresh token.
+ *
+ * Built by omission on purpose. Spelling out the fields that MAY be
+ * stored means a field added to Session later is excluded by default —
+ * the opposite (delete s.refresh_token) would quietly persist anything
+ * new, which is how the first leak happened.
+ */
+function tabCopy(s: Session): string {
+  return JSON.stringify({
+    access_token: s.access_token,
+    expires_at: s.expires_at,
+    email: s.email,
+    role: s.role,
+    tenant: s.tenant,
+  })
+}
+
 function writeSession(s: Session | null): void {
   session = s
+  try {
+    if (s) sessionStorage.setItem(TAB_KEY, tabCopy(s))
+    else sessionStorage.removeItem(TAB_KEY)
+  } catch {
+    /* storage blocked (private mode, or a WebView with it disabled).
+       The session still works for this page; a reload asks for the PIN,
+       which is exactly the old behaviour. */
+  }
 }
+
+/**
+ * Restore the access token this tab was using, if it is still alive.
+ *
+ * `refresh_token: ''` is not a placeholder to be filled in later — it is
+ * the accurate statement that this session cannot renew itself. refresh()
+ * reads it and ends the session rather than looping on a 401.
+ */
+function restoreTabSession(): void {
+  try {
+    const raw = sessionStorage.getItem(TAB_KEY)
+    if (!raw) return
+    const t = JSON.parse(raw) as Omit<Session, 'refresh_token'>
+    // A minute of headroom, so a token about to die does not open an app
+    // that immediately fails every read.
+    if (!t?.access_token || !(t.expires_at - Date.now() > 60_000)) {
+      sessionStorage.removeItem(TAB_KEY)
+      return
+    }
+    if (t.tenant !== TENANT) {
+      sessionStorage.removeItem(TAB_KEY)
+      return
+    }
+    session = { ...t, refresh_token: '' }
+  } catch {
+    /* unreadable or malformed — start locked, which is the safe end */
+  }
+}
+restoreTabSession()
 
 /** Claims are read for display only; RLS is what actually enforces them. */
 function claims(token: string): Record<string, unknown> {
@@ -211,6 +278,15 @@ export function isSignedIn(): boolean {
 
 /** Swap the refresh token for a fresh access token. */
 async function refresh(): Promise<boolean> {
+  /* No refresh token means this session was restored from sessionStorage
+     after a reload. It cannot be renewed, so end it — that flips the app
+     back to the PIN screen, where the vault CAN produce a real one.
+     Returning false while leaving the dead session in place would leave
+     the owner staring at an app that fails every read. */
+  if (session && !session.refresh_token) {
+    writeSession(null)
+    return false
+  }
   if (!session?.refresh_token) return false
   try {
     const res = await fetch(`${PROJECT}/auth/v1/token?grant_type=refresh_token`, {

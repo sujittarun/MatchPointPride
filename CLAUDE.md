@@ -119,22 +119,41 @@ screenshots now go to the private `payment-proofs` bucket, keyed
 `<tenant>/<payment_id>.<ext>`, read back through a short-lived signed
 URL. Never make that bucket public: they are bank screenshots.
 
-**The Supabase session is held in memory only.** Not localStorage, not
-sessionStorage, not a cookie. This paragraph used to say "nothing else"
-while `cloud.ts` wrote the whole session — refresh token included — to
+**The refresh token never touches storage. The access token lives in
+sessionStorage.** The split is the whole rule, because the two are not
+the same kind of secret:
+
+- the **refresh token** is durable — whoever reads one mints sessions
+  for tenant `mpp` for ever, with no PIN and no expiry to wait out, and
+  the attempt ladder never applies because nothing goes through the PIN.
+  It is in memory, and at rest only inside the vault `vault.ts` seals.
+- the **access token** expires in an hour by itself, and is already sent
+  to PostgREST on every request.
+
+This paragraph used to say "nothing else" while `cloud.ts` wrote the
+whole session — refresh token included — to
 `localStorage['mpp.session.v1']`, one key away from the vault that
 exists to encrypt that exact token. The ciphertext was strong and the
-plaintext lay beside it, so the PIN, the 600k PBKDF2 iterations and the
-attempt ladder all guarded a door that stood open: one `getItem` and
-you hold a durable credential for the tenant.
+plaintext lay beside it. Removing that was right; removing the access
+token *with* it was over-correction — it bought nothing the expiry did
+not already give, and charged a PIN entry for every reload.
 
-The consequence is that a reload or a restart asks for the PIN, which
-is what `vault.ts` always described — "every day after that, the PIN
-decrypts that token and swaps it for a fresh session". `authed` is
-derived from whether a session exists rather than kept as a separate
-flag, so the two cannot disagree and the app can never open signed-in
-with nothing behind it. `scripts/session.ts` asserts that no credential
-reaches storage; `npm test` runs it.
+`sessionStorage`, not `localStorage`, and the difference is
+load-bearing: it is scoped to the tab and dies when the app closes.
+Backgrounding on Android keeps the WebView alive, so resuming does not
+ask; a cold start does. After a reload there is no refresh token in
+memory, so when the restored access token expires `refresh()` ends the
+session and the owner gets the PIN pad rather than a wall of failed
+reads. `authed` is derived from whether a session exists rather than
+kept as a separate flag, so the two cannot disagree.
+
+`scripts/session.ts` asserts the durable credential reaches neither
+store, and that the access token reaches exactly one key.
+`scripts/session-reload.ts` runs in three separate processes — the
+restore decision happens at module load, so one bundled run cannot ask
+the question twice — and proves a live token opens the app, an expired
+one does not, and another tenant's does not. Both are mutation-tested.
+`npm test` runs all of it.
 
 The app ships a manifest so a home-screen icon on iOS is a real
 installed app rather than a Safari bookmark. Without it, script-writable
