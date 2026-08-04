@@ -352,12 +352,24 @@ export function BatchSheet({
       toast('That fee looks too large — check the digits.', 'bad')
       return
     }
-    /* Caught here as well as server-side, only so the owner is told
-       before the sheet closes. set_collection_account applies the same
-       rule and is the one that actually decides — a mistyped UPI id does
-       not bounce, it sends a parent's money nowhere. */
+    /* Required, by the owner's decision.
+
+       resolve_upi() would fall back to the academy's own account, so a
+       blank batch is not technically unpayable — but a fee reminder is
+       only worth sending if it carries a link, and the owner would
+       rather be stopped here than discover a batch quietly collecting
+       somewhere he did not choose.
+
+       The format check is duplicated from set_collection_account only so
+       the message arrives before the sheet closes. That function is
+       still the one that decides — a mistyped UPI id does not bounce, it
+       sends a parent's money nowhere. */
     const upiTrimmed = upi.trim()
-    if (upiTrimmed && !/^[a-zA-Z0-9._%+-]{2,64}@[a-zA-Z][a-zA-Z0-9.-]{1,32}$/.test(upiTrimmed)) {
+    if (!upiTrimmed) {
+      toast('Add the UPI id this batch collects to — reminders need it to carry a payment link.', 'bad')
+      return
+    }
+    if (!/^[a-zA-Z0-9._%+-]{2,64}@[a-zA-Z][a-zA-Z0-9.-]{1,32}$/.test(upiTrimmed)) {
       toast('That does not look like a UPI id. It should read like name@bank.', 'bad')
       return
     }
@@ -377,9 +389,7 @@ export function BatchSheet({
       endTime: slotEnd,
       capacity: nonNegativeOrUndef(capacity) ?? null,
       fee: nonNegative(fee),
-      // Blank clears it, and resolve_upi falls back to the academy's own
-      // account — which is why this is sent even when empty.
-      upiId: upiTrimmed || null,
+      upiId: upiTrimmed,
       upiName: null,
     })
     if (!r.ok) {
@@ -492,16 +502,15 @@ export function BatchSheet({
             looking like they work. The academy's single UPI is already
             configured platform-side and reaches the message. */}
 
-        {/* Where THIS batch's fees are collected.
+        {/* Where THIS batch's fees are collected. Required.
 
-            It is not decoration: reminder_queue and the payment link
-            both ask resolve_upi(), which reads batches.upi_id first and
-            falls back to the centre and then the academy. So a batch
-            with its own id here collects to it, and every reminder sent
-            to a student in that batch carries that account. */}
+            reminder_queue and the payment link both ask resolve_upi(),
+            which reads batches.upi_id first. So whatever is typed here
+            is the account every reminder sent to a student in this batch
+            will carry. */}
         <Field
           label="Collect fees to"
-          hint="Optional. Leave blank to use the academy's own UPI id."
+          hint="The UPI id parents pay into for this batch."
           span
         >
           <input
