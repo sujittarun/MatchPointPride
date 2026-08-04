@@ -1330,6 +1330,26 @@ function report(): void {
   eq('halves: an absent day adds nothing worked', h2.worked, 5)
   eq('halves: and counts as an absence', h2.absent, 1)
   ok('halves: worked never exceeds days present', h2.worked <= h2.present)
+
+  /* Three states per half, so a morning can be marked while the evening
+     is still unsaid. That combination was unreachable when each pill was
+     a two-way toggle, and it must not be read as a full day just because
+     nobody has ruled the evening out yet. */
+  d.attendance.push({
+    id: `${sid}__${days[8]}`, staffId: sid, date: days[8],
+    status: 'present', am: true,
+  })
+  const h3 = staffMonthStats(d, sid, m)
+  eq('tri-state: a morning with the evening unsaid is half a day', h3.worked, 5.5)
+  eq('tri-state: …and the day counts as present', h3.present, 7)
+
+  d.attendance.push({
+    id: `${sid}__${days[9]}`, staffId: sid, date: days[9],
+    status: 'absent', am: false,
+  })
+  const h4 = staffMonthStats(d, sid, m)
+  eq('tri-state: a morning marked absent adds nothing', h4.worked, 5.5)
+  eq('tri-state: and is an absence', h4.absent, 2)
 }
 
 /* ------------------------------------------------------------------

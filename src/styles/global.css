@@ -1091,7 +1091,7 @@ ul {
    375px phone — but never below the 44px the rest of the app holds to.
    ============================================================ */
 .shift {
-  min-width: 52px;
+  min-width: 58px;
   min-height: 44px;
   padding: 8px 10px;
   border-radius: 11px;
@@ -1113,13 +1113,31 @@ ul {
   border-color: var(--ink-muted);
 }
 
-.shift--on {
+/* Three states, and the glyph carries as much of the meaning as the
+   colour does: a tick, a cross, or nothing. Colour alone would leave
+   the two marked states indistinguishable to anyone who cannot tell
+   green from red, and blank-vs-filled is exactly what the owner said
+   was unreadable. */
+.shift--yes {
   background: var(--money-in);
   border-color: transparent;
-  /* Dark ink on a light fill — the same treatment the Present button
-     used, so a marked shift reads at a glance across the list. */
   color: rgba(0, 0, 0, 0.82);
   font-weight: 700;
+}
+
+.shift--no {
+  background: var(--money-out);
+  border-color: transparent;
+  color: rgba(0, 0, 0, 0.82);
+  font-weight: 700;
+}
+
+.shift__mark {
+  margin-left: 4px;
+  font-size: 0.86em;
+  /* The glyphs sit slightly high in most UI faces at this weight. */
+  line-height: 1;
+  vertical-align: 1px;
 }
 
 /* ============================================================

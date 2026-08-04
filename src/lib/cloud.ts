@@ -836,7 +836,7 @@ export async function addRevenue(a: {
   label: string
   amount: number
   onDate: string
-  kind: 'Court' | 'Membership' | 'Coaching'
+  kind: 'Court' | 'Partner' | 'Membership' | 'Coaching'
   /** Which court and when — "Court 3 · 7:00 PM". Free text by design. */
   detail?: string
   note?: string
@@ -1021,20 +1021,44 @@ export async function deleteStaff(id: number): Promise<void> {
  * same day is an update, not an insert — a plain POST 409s. Sent as an
  * upsert via Prefer: resolution=merge-duplicates.
  */
+/**
+ * Record one day's shifts for one person.
+ *
+ * Each half is THREE states, not two: `true` worked, `false` did not,
+ * `null` nobody has said. That is what a nullable boolean already gave
+ * us, so this needed no schema change — and it is the difference
+ * between "the evening is off" and "the evening has not been marked
+ * yet", which a two-state pill could not express.
+ *
+ * Both null means the day is unmarked, and an unmarked day has NO ROW —
+ * so this deletes rather than writing a row full of nulls. An absent
+ * row and no row have always meant different things here.
+ */
 export async function markStaffDay(a: {
   coachId: string
   date: string
-  /** Morning shift worked. */
-  am: boolean
-  /** Evening shift worked. */
-  pm: boolean
+  am: boolean | null
+  pm: boolean | null
 }): Promise<void> {
+  const scope =
+    `tenant_id=eq.${TENANT}&date=eq.${a.date}&kind=eq.staff` +
+    `&person_id=eq.${encodeURIComponent(String(a.coachId))}`
+
+  if (a.am === null && a.pm === null) {
+    await request('DELETE', `/attendance?${scope}`)
+    track('attendance_marked', { cleared: true })
+    return
+  }
+
   /* `present` is DERIVED here and stored, never derived on read. It is
      the column every other tenant and the whole of history rely on, and
      a shared CHECK (attendance_mpp_halves_agree) refuses the row if it
      disagrees with the halves — so getting this wrong fails loudly
-     rather than quietly making a worked day look absent. */
-  const present = a.am || a.pm
+     rather than quietly making a worked day look absent.
+
+     `=== true` on purpose: null is not false. A morning marked worked
+     with the evening still unsaid is a day worked. */
+  const present = a.am === true || a.pm === true
   await requestUpsert('/attendance', {
     tenant_id: TENANT,
     date: a.date,

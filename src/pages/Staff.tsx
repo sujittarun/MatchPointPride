@@ -25,32 +25,35 @@ import {
 } from '../components/icons'
 
 /**
- * Is this half recorded as worked?
+ * What a half currently says: worked, did not, or nobody has said.
  *
- * `undefined` is not `false`. A day recorded before shifts existed has
- * neither half set and IS a full day — reading that as "morning off"
- * would turn four months of full days into halves on the first render.
+ * `undefined` is NOT `false`. A day recorded before shifts existed has
+ * neither half set and IS a full day — so a present row with nothing on
+ * either half reads as both worked, not as two blanks.
  */
-function shiftOn(rec: AttendanceRecord | undefined, half: 'am' | 'pm'): boolean {
-  if (!rec) return false
-  if (rec.status !== 'present') return false
-  if (rec.am === undefined && rec.pm === undefined) return true
-  return rec[half] === true
+type Half = 'yes' | 'no' | null
+
+function halfState(rec: AttendanceRecord | undefined, half: 'am' | 'pm'): Half {
+  if (!rec) return null
+  if (rec.am === undefined && rec.pm === undefined) {
+    // A pre-shift row. `present` was the whole of what it said.
+    return rec.status === 'present' ? 'yes' : 'no'
+  }
+  const v = rec[half]
+  return v === undefined ? null : v ? 'yes' : 'no'
 }
 
-/** What the row should say beside the role, or nothing when unmarked. */
-function dayLabel(rec: AttendanceRecord | undefined):
-  | { text: string; tone: string }
-  | null {
-  if (!rec) return null
-  if (rec.status !== 'present') return { text: 'Absent', tone: 'var(--money-out)' }
-  const am = shiftOn(rec, 'am')
-  const pm = shiftOn(rec, 'pm')
-  if (am && pm) return { text: 'Full day', tone: 'var(--money-in)' }
-  if (am) return { text: 'Morning', tone: 'var(--money-in)' }
-  if (pm) return { text: 'Evening', tone: 'var(--money-in)' }
-  return { text: 'Absent', tone: 'var(--money-out)' }
+/* not marked -> present -> absent -> not marked. Three taps returns the
+   day to untouched, which is the only way back to "nobody has said" — a
+   state a two-way toggle could not express and could not restore. */
+const NEXT: Record<'null' | 'yes' | 'no', Half> = { null: 'yes', yes: 'no', no: null }
+
+function cycle(cur: Half): Half {
+  return NEXT[cur === null ? 'null' : cur]
 }
+
+/** What goes in the pill: a tick, a cross, or nothing at all. */
+const GLYPH: Record<'yes' | 'no', string> = { yes: '✓', no: '✕' }
 
 export default function Staff() {
   const { data, toast, markStaffDay } = useStore()
@@ -92,9 +95,15 @@ export default function Staff() {
      not something a tap should be able to assert. */
   const mark = (staffId: string, half: 'am' | 'pm') => {
     const rec = byId.get(`${staffId}__${markDate}`)
-    const cur = { am: shiftOn(rec, 'am'), pm: shiftOn(rec, 'pm') }
-    const next = { ...cur, [half]: !cur[half] }
-    void markStaffDay({ coachId: staffId, date: markDate, ...next }).then((r) => {
+    const cur = { am: halfState(rec, 'am'), pm: halfState(rec, 'pm') }
+    const next = { ...cur, [half]: cycle(cur[half]) }
+    const toBool = (h: Half) => (h === null ? null : h === 'yes')
+    void markStaffDay({
+      coachId: staffId,
+      date: markDate,
+      am: toBool(next.am),
+      pm: toBool(next.pm),
+    }).then((r) => {
       if (!r.ok) toast(r.message, 'bad')
     })
   }
@@ -175,35 +184,23 @@ export default function Staff() {
                     <div className="truncate" style={{ fontSize: '0.86rem', fontWeight: 570 }}>
                       {s.name}
                     </div>
-                    <div className="t-mut truncate">
-                      {s.role}
-                      {(() => {
-                        /* Both pills are grey when nobody has marked the
-                           day AND when someone marked it absent. Those are
-                           different facts, so the row says which. */
-                        const label = dayLabel(byId.get(`${s.id}__${markDate}`))
-                        if (!label) return null
-                        return (
-                          <>
-                            {' · '}
-                            <span style={{ color: label.tone }}>{label.text}</span>
-                          </>
-                        )
-                      })()}
-                    </div>
+                    <div className="t-mut truncate">{s.role}</div>
                   </div>
                   <div className="row gap-6" style={{ flexShrink: 0 }}>
                     {(['am', 'pm'] as const).map((half) => {
-                      const on = shiftOn(byId.get(`${s.id}__${markDate}`), half)
+                      const st = halfState(byId.get(`${s.id}__${markDate}`), half)
+                      const shift = half === 'am' ? 'morning' : 'evening'
                       return (
                         <button
                           key={half}
-                          className={`shift${on ? ' shift--on' : ''}`}
+                          className={`shift${st ? ` shift--${st}` : ''}`}
                           onClick={() => mark(s.id, half)}
-                          aria-label={`${s.name}: ${half === 'am' ? 'morning' : 'evening'} shift`}
-                          aria-pressed={on}
+                          aria-label={`${s.name}, ${shift}: ${
+                            st === 'yes' ? 'present' : st === 'no' ? 'absent' : 'not marked'
+                          }. Tap to change`}
                         >
                           {half.toUpperCase()}
+                          {st && <span className="shift__mark">{GLYPH[st]}</span>}
                         </button>
                       )
                     })}

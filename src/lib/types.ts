@@ -173,7 +173,17 @@ export interface AttendanceRecord {
 }
 
 export type TxnType = 'revenue' | 'expense'
-export type RevenueSource = 'student_fee' | 'court_booking' | 'membership' | 'other'
+/* `partner` is court money that did NOT come from the academy's own
+   desk — Playo, Hudle and the like settle in a lump on their own cycle.
+   It is a separate source rather than a flavour of court_booking so the
+   breakdown can show what the venue earned directly against what a
+   channel paid out, which is the whole reason to record it apart. */
+export type RevenueSource =
+  | 'student_fee'
+  | 'court_booking'
+  | 'partner'
+  | 'membership'
+  | 'other'
 export type BookingMode = 'individual' | 'daily' | 'monthly'
 
 export const EXPENSE_CATEGORIES = [

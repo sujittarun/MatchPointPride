@@ -167,13 +167,13 @@ interface Ctx {
   saveBatch: (a: { id?: string; name: string; days: number[]; startTime: string; endTime: string; capacity?: number | null; fee: number }) => Promise<{ ok: boolean; message: string }>
   removeBatch: (id: string) => Promise<{ ok: boolean; message: string }>
   recordFee: (a: { enrollmentId: number; amount: number; onDate?: string; mode?: string; note?: string }) => Promise<{ ok: boolean; message: string; paymentId?: number }>
-  addRevenue: (a: { label: string; amount: number; onDate: string; kind: 'Court' | 'Membership' | 'Coaching'; detail?: string; note?: string }) => Promise<{ ok: boolean; message: string }>
+  addRevenue: (a: { label: string; amount: number; onDate: string; kind: 'Court' | 'Partner' | 'Membership' | 'Coaching'; detail?: string; note?: string }) => Promise<{ ok: boolean; message: string }>
   addExpense: (a: { category: string; amount: number; onDate: string; note?: string }) => Promise<{ ok: boolean; message: string }>
   logReminderSent: (a: { enrollmentId: number; stage: string; amount: number | null; phone: string | null; body: string; channel: 'whatsapp' | 'sms' | 'call' }) => Promise<{ ok: boolean; message: string }>
   removeEntry: (a: { kind: 'payment' | 'expense'; id: number }) => Promise<{ ok: boolean; message: string }>
   saveStaff: (a: { id?: string; name: string; role: string; phone?: string; active?: boolean }) => Promise<{ ok: boolean; message: string }>
   removeStaff: (id: string) => Promise<{ ok: boolean; message: string }>
-  markStaffDay: (a: { coachId: string; date: string; am: boolean; pm: boolean }) => Promise<{ ok: boolean; message: string }>
+  markStaffDay: (a: { coachId: string; date: string; am: boolean | null; pm: boolean | null }) => Promise<{ ok: boolean; message: string }>
   /**
    * Create, edit, discontinue or bring back a student, in Postgres.
    *
@@ -422,7 +422,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   )
 
   const addRevenue = useCallback(
-    (a: { label: string; amount: number; onDate: string; kind: 'Court' | 'Membership' | 'Coaching'; detail?: string; note?: string }) =>
+    (a: { label: string; amount: number; onDate: string; kind: 'Court' | 'Partner' | 'Membership' | 'Coaching'; detail?: string; note?: string }) =>
       write('add revenue', () => cloudAddRevenue(a)),
     [write],
   )
@@ -445,7 +445,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   )
 
   const markStaffDay = useCallback(
-    (a: { coachId: string; date: string; am: boolean; pm: boolean }) =>
+    (a: { coachId: string; date: string; am: boolean | null; pm: boolean | null }) =>
       write('mark attendance', () => cloudMarkStaffDay(a)),
     [write],
   )

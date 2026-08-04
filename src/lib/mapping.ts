@@ -242,8 +242,10 @@ export function toTransactions(payments: PaymentRow[], expenses: ExpenseRow[]): 
     category: p.type || 'Coaching',
     detail: p.detail ?? undefined,
     source:
-      p.type === 'Court' ? 'court_booking' : p.type === 'Membership' ? 'membership'
-        : p.enrollment_id ? 'student_fee' : 'other',
+      p.type === 'Court' ? 'court_booking'
+        : p.type === 'Partner' ? 'partner'
+          : p.type === 'Membership' ? 'membership'
+            : p.enrollment_id ? 'student_fee' : 'other',
     studentId: p.member_id ? String(p.member_id) : undefined,
     feeKind: (p.kind ?? undefined) as Transaction['feeKind'],
     note: p.note ?? undefined,

@@ -91,6 +91,7 @@ export function revenueBySource(txns: Transaction[], monthKey?: string) {
     const label =
       t.source === 'student_fee' ? 'Student fees'
       : t.source === 'court_booking' ? 'Court bookings'
+      : t.source === 'partner' ? 'Partner apps'
       : t.source === 'membership' ? 'Membership'
       : 'Other'
     map.set(label, (map.get(label) ?? 0) + t.amount)
@@ -140,6 +141,7 @@ export function moneyTree(txns: Transaction[], monthKey: string) {
     }
     const label =
       t.source === 'court_booking' ? 'Court bookings'
+      : t.source === 'partner' ? 'Partner apps'
       : t.source === 'membership' ? 'Memberships'
       : t.source === 'student_fee'
         ? t.feeKind === 'admission' ? 'New admissions'

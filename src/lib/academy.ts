@@ -55,6 +55,11 @@ export const ACADEMY = {
   courtCount: 7,
   bookingHours: { from: 5, to: 23 },
 
+  /* Booking channels that settle in a lump rather than per booking.
+     'Other' is deliberate — a new aggregator should not need a code
+     change before its money can be recorded. */
+  partners: ['Playo', 'Hudle', 'Other'] as const,
+
   /** Set this to switch on the public WhatsApp enquiry buttons. */
   enquiryPhone: '' as string,
   countryCode: '91' as string,

@@ -3,6 +3,7 @@ import { useStore } from '../lib/store'
 import { ACADEMY } from '../lib/academy'
 import {
   EXPENSE_CATEGORIES,
+  type BookingMode,
   type RevenueSource,
   type Transaction,
   type TxnType,
@@ -43,6 +44,39 @@ import {
 
 type ListFilter = 'all' | 'revenue' | 'expense'
 
+const BOOKING_MODE_LABEL: Record<BookingMode, string> = {
+  individual: 'One booking',
+  daily: 'Day total',
+  monthly: 'Month total',
+}
+
+/**
+ * The sentence the ledger will print under a revenue row.
+ *
+ * One function so the form and the record cannot drift: whatever this
+ * returns is exactly what is stored and exactly what is shown. A time is
+ * only included for a single booking — a day's or a month's takings did
+ * not happen at 7:00 PM, and printing one would be a detail the row does
+ * not actually know.
+ */
+function revenueDetail(a: {
+  source: RevenueSource
+  bookingMode: BookingMode
+  court: number
+  hour: number
+  partner: string
+  payout: 'weekly' | 'monthly'
+}): string | undefined {
+  if (a.source === 'court_booking') {
+    const head = `${BOOKING_MODE_LABEL[a.bookingMode]} · Court ${a.court}`
+    return a.bookingMode === 'individual' ? `${head} · ${hourLabel(a.hour)}` : head
+  }
+  if (a.source === 'partner') {
+    return `${a.partner} · ${a.payout === 'weekly' ? 'Weekly' : 'Monthly'} payout`
+  }
+  return undefined
+}
+
 export default function Finance() {
   const { data, toast, removeEntry } = useStore()
   const [month, setMonth] = useState(currentMonthKey())
@@ -75,6 +109,7 @@ export default function Finance() {
        With the court and time now in the subtitle that read "Court ·
        Court 3 · 7:00 PM". */
     if (t.source === 'court_booking') return 'Court booking'
+    if (t.source === 'partner') return 'Partner payout'
     return t.category
   }
 
@@ -500,6 +535,9 @@ function TxnSheet({
   const [source, setSource] = useState<RevenueSource>('court_booking')
   const [court, setCourt] = useState(1)
   const [hour, setHour] = useState(18)
+  const [bookingMode, setBookingMode] = useState<BookingMode>('individual')
+  const [partner, setPartner] = useState<string>(ACADEMY.partners[0])
+  const [payout, setPayout] = useState<'weekly' | 'monthly'>('weekly')
   const [category, setCategory] = useState<string>(EXPENSE_CATEGORIES[0])
   const [studentId, setStudentId] = useState('')
   const [amount, setAmount] = useState('')
@@ -551,18 +589,21 @@ function TxnSheet({
         r = await recordFee({ enrollmentId: student.enrollmentId, amount: amt, onDate: date, note: note.trim() || undefined })
       } else {
         r = await addRevenue({
-          label: source === 'court_booking' ? 'Court Booking' : 'Other income',
+          label:
+            source === 'court_booking' ? 'Court Booking'
+              : source === 'partner' ? `${partner} payout`
+                : 'Other income',
           amount: amt,
           onDate: date,
-          kind: source === 'court_booking' ? 'Court' : 'Coaching',
+          kind:
+            source === 'court_booking' ? 'Court'
+              : source === 'partner' ? 'Partner'
+                : 'Coaching',
           /* Written as the sentence it will be read as, and stored in
              payments.detail — the column the seeded court rows already
              use for exactly this. Never parsed back apart: the ledger
              prints it verbatim, so there is no format to break. */
-          detail:
-            source === 'court_booking'
-              ? `Court ${court} · ${hourLabel(hour)}`
-              : undefined,
+          detail: revenueDetail({ source, bookingMode, court, hour, partner, payout }),
           note: note.trim() || undefined,
         })
       }
@@ -627,17 +668,38 @@ function TxnSheet({
                 onChange={(e) => setSource(e.target.value as RevenueSource)}
               >
                 <option value="court_booking">Court booking</option>
+                <option value="partner">Partner app (Playo, Hudle…)</option>
                 <option value="other">Other</option>
               </select>
             </Field>
 
             {source === 'court_booking' && (
               <>
-                {/* The "Single / Per day / Per month" control that used to
-                    sit here decided nothing: `bookingMode` was set by three
-                    buttons and never read by save(). Same fault as the "Fee
-                    for" month picker removed below — a control that looks
-                    like it changes the record and does not. */}
+                {/* This control is back, and this time it is recorded.
+                    It previously set `bookingMode` and save() never read
+                    it — a control that looked like it changed the record
+                    and did not. It now goes into the detail line. */}
+                <Field label="Booking entry" span>
+                  <div className="seg" style={{ width: '100%' }}>
+                    {(
+                      [
+                        ['individual', 'Single'],
+                        ['daily', 'Per day'],
+                        ['monthly', 'Per month'],
+                      ] as Array<[BookingMode, string]>
+                    ).map(([m, label]) => (
+                      <button
+                        key={m}
+                        type="button"
+                        className={`seg__item grow${bookingMode === m ? ' seg__item--on' : ''}`}
+                        onClick={() => setBookingMode(m)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
                 <Field label="Court">
                   <select
                     className="select"
@@ -652,17 +714,54 @@ function TxnSheet({
                   </select>
                 </Field>
 
-                <Field label="Time">
+                {/* A day's or a month's takings did not happen at one
+                    o'clock, so the field is not offered for them. */}
+                {bookingMode === 'individual' && (
+                  <Field label="Time">
+                    <select
+                      className="select"
+                      value={hour}
+                      onChange={(e) => setHour(Number(e.target.value))}
+                    >
+                      {hourRange(ACADEMY.bookingHours.from, ACADEMY.bookingHours.to).map((h) => (
+                        <option key={h} value={h}>
+                          {hourLabel(h)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
+              </>
+            )}
+
+            {source === 'partner' && (
+              <>
+                {/* Playo and Hudle settle in a lump on their own cycle, so
+                    the date on this sheet is the day the payout landed —
+                    not the day any one court was booked. Which is why this
+                    is a separate source and not a kind of court booking. */}
+                <Field label="App">
                   <select
                     className="select"
-                    value={hour}
-                    onChange={(e) => setHour(Number(e.target.value))}
+                    value={partner}
+                    onChange={(e) => setPartner(e.target.value)}
                   >
-                    {hourRange(ACADEMY.bookingHours.from, ACADEMY.bookingHours.to).map((h) => (
-                      <option key={h} value={h}>
-                        {hourLabel(h)}
+                    {ACADEMY.partners.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
                       </option>
                     ))}
+                  </select>
+                </Field>
+
+                <Field label="Payout">
+                  <select
+                    className="select"
+                    value={payout}
+                    onChange={(e) => setPayout(e.target.value as 'weekly' | 'monthly')}
+                  >
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
                   </select>
                 </Field>
               </>
