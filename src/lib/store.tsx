@@ -173,7 +173,7 @@ interface Ctx {
   removeEntry: (a: { kind: 'payment' | 'expense'; id: number }) => Promise<{ ok: boolean; message: string }>
   saveStaff: (a: { id?: string; name: string; role: string; phone?: string; active?: boolean }) => Promise<{ ok: boolean; message: string }>
   removeStaff: (id: string) => Promise<{ ok: boolean; message: string }>
-  markStaffDay: (a: { coachId: string; date: string; status: 'present' | 'absent' }) => Promise<{ ok: boolean; message: string }>
+  markStaffDay: (a: { coachId: string; date: string; am: boolean; pm: boolean }) => Promise<{ ok: boolean; message: string }>
   /**
    * Create, edit, discontinue or bring back a student, in Postgres.
    *
@@ -445,7 +445,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   )
 
   const markStaffDay = useCallback(
-    (a: { coachId: string; date: string; status: 'present' | 'absent' }) =>
+    (a: { coachId: string; date: string; am: boolean; pm: boolean }) =>
       write('mark attendance', () => cloudMarkStaffDay(a)),
     [write],
   )

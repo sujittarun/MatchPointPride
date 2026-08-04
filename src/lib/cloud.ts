@@ -1024,16 +1024,27 @@ export async function deleteStaff(id: number): Promise<void> {
 export async function markStaffDay(a: {
   coachId: string
   date: string
-  status: AttendanceStatus
+  /** Morning shift worked. */
+  am: boolean
+  /** Evening shift worked. */
+  pm: boolean
 }): Promise<void> {
+  /* `present` is DERIVED here and stored, never derived on read. It is
+     the column every other tenant and the whole of history rely on, and
+     a shared CHECK (attendance_mpp_halves_agree) refuses the row if it
+     disagrees with the halves — so getting this wrong fails loudly
+     rather than quietly making a worked day look absent. */
+  const present = a.am || a.pm
   await requestUpsert('/attendance', {
     tenant_id: TENANT,
     date: a.date,
     kind: 'staff',
     person_id: String(a.coachId),
-    present: a.status === 'present',
+    present,
+    am: a.am,
+    pm: a.pm,
   })
-  track('attendance_marked', { present: a.status === 'present' })
+  track('attendance_marked', { present })
 }
 
 /**
@@ -1142,6 +1153,10 @@ export type AttendanceRow = {
   kind: string
   person_id: string
   present: boolean
+  /** null for every row written before shifts, and for every other
+      tenant. Not false — nobody said. */
+  am: boolean | null
+  pm: boolean | null
 }
 
 export type TenantSettings = {
@@ -1187,7 +1202,7 @@ export const read = {
   attendance: (sinceISO: string) =>
     select<AttendanceRow>(
       'attendance',
-      `select=date,kind,person_id,present&date=gte.${sinceISO}&order=date.desc`,
+      `select=date,kind,person_id,present,am,pm&date=gte.${sinceISO}&order=date.desc`,
     ),
   settings: () => rpc<TenantSettings>('tenant_settings', { p_tenant: TENANT }),
 }

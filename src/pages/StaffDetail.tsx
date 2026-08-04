@@ -82,7 +82,16 @@ export default function StaffDetail({ id }: { id: string }) {
       setDayEdit(null)
       return
     }
-    void markStaffDay({ coachId: staff.id, date, status }).then((r) => {
+    /* This screen marks a whole day, not a shift — the AM/PM split lives
+       on the roster where the day is actually being worked through. So
+       present means both halves and absent means neither, which is
+       exactly what `present` alone used to mean. */
+    void markStaffDay({
+      coachId: staff.id,
+      date,
+      am: status === 'present',
+      pm: status === 'present',
+    }).then((r) => {
       if (!r.ok) toast(r.message, 'bad')
     })
     setDayEdit(null)

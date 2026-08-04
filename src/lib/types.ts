@@ -158,7 +158,17 @@ export interface AttendanceRecord {
   staffId: string
   /** YYYY-MM-DD */
   date: string
+  /**
+   * Did they work at all that day. Still the answer to that question —
+   * `am`/`pm` only say WHICH half, and are undefined on every row
+   * recorded before shifts existed.
+   */
   status: AttendanceStatus
+  /** Morning shift. `undefined` = nobody said, which for a present day
+      means a full day — never a zero. */
+  am?: boolean
+  /** Evening shift. Same rule as `am`. */
+  pm?: boolean
   note?: string
 }
 

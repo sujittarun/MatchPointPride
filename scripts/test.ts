@@ -340,6 +340,7 @@ ok('seed: all amounts positive', seed.transactions.every((t) => t.amount > 0))
   eq('attendance: present tally', s2.present, 3)
   eq('attendance: absent tally', s2.absent, 1)
 
+
   // a record on a Sunday must be ignored by month stats
   const sunday = monthDates(m).find(isSunday)!
   d.attendance.push({ id: `${sid}__${sunday}`, staffId: sid, date: sunday, status: 'present' })
@@ -1276,6 +1277,59 @@ function report(): void {
 
   eq('payLink omits a zero amount', new URLSearchParams(
        payLink({ ...d, amount: 0 }).split('?')[1]).get('a'), null)
+}
+
+{
+  /* Half days get their own fixture. Sharing the block above meant four
+     extra rows landed in assertions that count totals, and two of them
+     went red — the tests were right and the fixture was wrong. */
+  const d: AppData = JSON.parse(JSON.stringify(buildEmptyData()))
+  const sid = d.staff[0].id
+  const m = shiftMonth(currentMonthKey(), -1)
+  const days = workingDays(m)
+
+  /*
+     THE rule: a present row with neither half recorded is a FULL day.
+     Every row written before shifts existed looks like that — 140 of
+     them in mpp alone — so reading undefined as "half off" would turn
+     four months of full days into halves the moment this shipped, with
+     nothing failing to say so. */
+  // three ordinary days, recorded the way every row before shifts was
+  for (const day of [days[0], days[1], days[2]]) {
+    d.attendance.push({ id: `${sid}__${day}`, staffId: sid, date: day, status: 'present' })
+  }
+  const legacy = staffMonthStats(d, sid, m)
+  eq('halves: legacy present rows count as whole days', legacy.worked, 3)
+  eq('halves: days present is unchanged by the split', legacy.present, 3)
+
+  d.attendance.push({
+    id: `${sid}__${days[4]}`, staffId: sid, date: days[4],
+    status: 'present', am: true, pm: false,
+  })
+  const h1 = staffMonthStats(d, sid, m)
+  eq('halves: a morning is half a day worked', h1.worked, 3.5)
+  eq('halves: …but still a full day PRESENT', h1.present, 4)
+
+  d.attendance.push({
+    id: `${sid}__${days[5]}`, staffId: sid, date: days[5],
+    status: 'present', am: false, pm: true,
+  })
+  eq('halves: an evening is half a day too', staffMonthStats(d, sid, m).worked, 4)
+
+  d.attendance.push({
+    id: `${sid}__${days[6]}`, staffId: sid, date: days[6],
+    status: 'present', am: true, pm: true,
+  })
+  eq('halves: both shifts is a whole day', staffMonthStats(d, sid, m).worked, 5)
+
+  d.attendance.push({
+    id: `${sid}__${days[7]}`, staffId: sid, date: days[7],
+    status: 'absent', am: false, pm: false,
+  })
+  const h2 = staffMonthStats(d, sid, m)
+  eq('halves: an absent day adds nothing worked', h2.worked, 5)
+  eq('halves: and counts as an absence', h2.absent, 1)
+  ok('halves: worked never exceeds days present', h2.worked <= h2.present)
 }
 
 /* ------------------------------------------------------------------

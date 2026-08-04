@@ -205,6 +205,8 @@ export interface StaffMonthStats {
   present: number
   absent: number
   marked: number
+  /** Days worked with halves counted — 17.5 rather than 18. */
+  worked: number
   workingDays: number
   /** Share of marked working days actually attended. */
   consistency: number
@@ -217,17 +219,31 @@ export function staffMonthStats(
 ): StaffMonthStats {
   const days = workingDays(monthKey)
   const map = attendanceMap(data.attendance)
+  const byId = new Map(data.attendance.map((r) => [r.id, r]))
   let present = 0
   let absent = 0
+  let worked = 0
   for (const d of days) {
     const st = map.get(`${staffId}__${d}`)
-    if (st === 'present') present++
-    else if (st === 'absent') absent++
+    if (st === 'present') {
+      present++
+      /* Halves, where anyone said. A present day with neither recorded
+         is a FULL day — that is what present meant before shifts
+         existed, and reading it as zero would silently rewrite four
+         months of history the first time this shipped. */
+      const rec = byId.get(`${staffId}__${d}`)
+      if (rec?.am === undefined && rec?.pm === undefined) worked += 1
+      else worked += (rec?.am ? 0.5 : 0) + (rec?.pm ? 0.5 : 0)
+    } else if (st === 'absent') absent++
   }
   const marked = present + absent
   return {
     staffId,
     present, absent, marked,
+    /* Days actually worked, halves included. `present` stays a count of
+       DAYS so `consistency` and every trend built on it keep meaning
+       exactly what they meant yesterday. */
+    worked,
     workingDays: days.length,
     consistency: marked > 0 ? (present / marked) * 100 : 0,
   }

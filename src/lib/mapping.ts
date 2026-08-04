@@ -271,6 +271,10 @@ export type AttendanceRow = {
   kind: string
   person_id: string
   present: boolean
+  /** null on every row written before shifts existed, and on every row
+      any other tenant writes. Not false — nobody said. */
+  am: boolean | null
+  pm: boolean | null
 }
 
 export function toAttendance(rows: AttendanceRow[]): AttendanceRecord[] {
@@ -281,6 +285,10 @@ export function toAttendance(rows: AttendanceRow[]): AttendanceRecord[] {
       staffId: a.person_id,
       date: a.date,
       status: a.present ? 'present' : 'absent',
+      // null -> undefined, so "nobody said" stays distinguishable from
+      // "said no". A day with neither is a full day, not a zero.
+      am: a.am ?? undefined,
+      pm: a.pm ?? undefined,
     }))
 }
 

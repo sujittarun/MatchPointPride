@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../lib/store'
 import { navigate } from '../lib/router'
-import type { AttendanceStatus, Staff as StaffT } from '../lib/types'
+import type { AttendanceRecord, Staff as StaffT } from '../lib/types'
 import {
   MAX_AMOUNT,
   currentMonthKey,
@@ -24,10 +24,33 @@ import {
   IconStaff,
 } from '../components/icons'
 
-const STATUSES: Array<{ value: AttendanceStatus; label: string }> = [
-  { value: 'present', label: 'Present' },
-  { value: 'absent', label: 'Absent' },
-]
+/**
+ * Is this half recorded as worked?
+ *
+ * `undefined` is not `false`. A day recorded before shifts existed has
+ * neither half set and IS a full day — reading that as "morning off"
+ * would turn four months of full days into halves on the first render.
+ */
+function shiftOn(rec: AttendanceRecord | undefined, half: 'am' | 'pm'): boolean {
+  if (!rec) return false
+  if (rec.status !== 'present') return false
+  if (rec.am === undefined && rec.pm === undefined) return true
+  return rec[half] === true
+}
+
+/** What the row should say beside the role, or nothing when unmarked. */
+function dayLabel(rec: AttendanceRecord | undefined):
+  | { text: string; tone: string }
+  | null {
+  if (!rec) return null
+  if (rec.status !== 'present') return { text: 'Absent', tone: 'var(--money-out)' }
+  const am = shiftOn(rec, 'am')
+  const pm = shiftOn(rec, 'pm')
+  if (am && pm) return { text: 'Full day', tone: 'var(--money-in)' }
+  if (am) return { text: 'Morning', tone: 'var(--money-in)' }
+  if (pm) return { text: 'Evening', tone: 'var(--money-in)' }
+  return { text: 'Absent', tone: 'var(--money-out)' }
+}
 
 export default function Staff() {
   const { data, toast, markStaffDay } = useStore()
@@ -49,17 +72,29 @@ export default function Staff() {
       : 0
 
   const totalAbsent = teamStats.reduce((a, t) => a + t.stats.absent, 0)
+  /* Every record by id, so a tap can read the day's other half. */
+  const byId = useMemo(
+    () => new Map(data.attendance.map((r) => [r.id, r])),
+    [data.attendance],
+  )
+
   const unmarked = isSunday(markDate)
     ? 0
     : active.filter((s) => !map.get(`${s.id}__${markDate}`)).length
 
-  const mark = (staffId: string, status: AttendanceStatus) => {
-    /* One row per person per day in the database, so this is an
-       upsert and re-tapping the same status simply rewrites it. The old
-       behaviour — tap twice to clear — is gone: an absent row and no row
-       mean different things to attendance_dashboard, and "no record"
-       is not something a tap should be able to assert. */
-    void markStaffDay({ coachId: staffId, date: markDate, status }).then((r) => {
+  /* Toggle one shift. The other half is read from what is already
+     recorded, so tapping PM never silently clears the morning.
+
+     `present` is not passed — cloud.ts derives and stores it, because it
+     is the column every other tenant and all of history read. Turning
+     both halves off therefore writes an ABSENT row, not a deleted one:
+     an absent row and no row mean different things, and "no record" is
+     not something a tap should be able to assert. */
+  const mark = (staffId: string, half: 'am' | 'pm') => {
+    const rec = byId.get(`${staffId}__${markDate}`)
+    const cur = { am: shiftOn(rec, 'am'), pm: shiftOn(rec, 'pm') }
+    const next = { ...cur, [half]: !cur[half] }
+    void markStaffDay({ coachId: staffId, date: markDate, ...next }).then((r) => {
       if (!r.ok) toast(r.message, 'bad')
     })
   }
@@ -68,7 +103,7 @@ export default function Staff() {
     void (async () => {
       const active = data.staff.filter((x) => x.active)
       const results = await Promise.all(
-        active.map((st) => markStaffDay({ coachId: st.id, date: markDate, status: 'present' })),
+        active.map((st) => markStaffDay({ coachId: st.id, date: markDate, am: true, pm: true })),
       )
       const failed = results.filter((r) => !r.ok).length
       if (failed) toast(`${failed} of ${active.length} could not be saved.`, 'bad')
@@ -124,7 +159,6 @@ export default function Staff() {
         ) : (
           <div className="col gap-8">
             {active.map((s) => {
-              const cur = map.get(`${s.id}__${markDate}`)
               return (
                 <div key={s.id} className="row gap-10">
                   <div
@@ -141,32 +175,35 @@ export default function Staff() {
                     <div className="truncate" style={{ fontSize: '0.86rem', fontWeight: 570 }}>
                       {s.name}
                     </div>
-                    <div className="t-mut truncate">{s.role}</div>
+                    <div className="t-mut truncate">
+                      {s.role}
+                      {(() => {
+                        /* Both pills are grey when nobody has marked the
+                           day AND when someone marked it absent. Those are
+                           different facts, so the row says which. */
+                        const label = dayLabel(byId.get(`${s.id}__${markDate}`))
+                        if (!label) return null
+                        return (
+                          <>
+                            {' · '}
+                            <span style={{ color: label.tone }}>{label.text}</span>
+                          </>
+                        )
+                      })()}
+                    </div>
                   </div>
                   <div className="row gap-6" style={{ flexShrink: 0 }}>
-                    {STATUSES.map((st) => {
-                      const on = cur === st.value
+                    {(['am', 'pm'] as const).map((half) => {
+                      const on = shiftOn(byId.get(`${s.id}__${markDate}`), half)
                       return (
                         <button
-                          key={st.value}
-                          onClick={() => mark(s.id, st.value)}
-                          aria-label={`${s.name}: ${st.label}`}
+                          key={half}
+                          className={`shift${on ? ' shift--on' : ''}`}
+                          onClick={() => mark(s.id, half)}
+                          aria-label={`${s.name}: ${half === 'am' ? 'morning' : 'evening'} shift`}
                           aria-pressed={on}
-                          style={{
-                            minWidth: 66,
-                            minHeight: 44,
-                            padding: '8px 8px',
-                            borderRadius: 11,
-                            border: `1px solid ${on ? 'transparent' : 'var(--line-strong)'}`,
-                            background: on ? ATT_COLOR[st.value] : 'var(--surface-2)',
-                            color: on ? 'rgba(0,0,0,0.8)' : 'var(--ink-secondary)',
-                            fontWeight: on ? 700 : 550,
-                            fontSize: '0.79rem',
-                            cursor: 'pointer',
-                            transition: 'background 140ms var(--ease)',
-                          }}
                         >
-                          {st.label}
+                          {half.toUpperCase()}
                         </button>
                       )
                     })}

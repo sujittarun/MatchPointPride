@@ -1083,6 +1083,46 @@ ul {
 }
 
 /* ============================================================
+   AM / PM shift pills on the staff roster.
+
+   Two toggles, not a Present/Absent pair: turning both off IS absent,
+   because the shared CHECK derives `present` from the halves. They are
+   small on purpose — three names and two pills have to share 315px on a
+   375px phone — but never below the 44px the rest of the app holds to.
+   ============================================================ */
+.shift {
+  min-width: 52px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-radius: 11px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--ink-secondary);
+  font-weight: 560;
+  font-size: 0.79rem;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background 140ms var(--ease),
+    color 140ms var(--ease),
+    border-color 140ms var(--ease);
+}
+
+.shift:hover {
+  border-color: var(--ink-muted);
+}
+
+.shift--on {
+  background: var(--money-in);
+  border-color: transparent;
+  /* Dark ink on a light fill — the same treatment the Present button
+     used, so a marked shift reads at a glance across the list. */
+  color: rgba(0, 0, 0, 0.82);
+  font-weight: 700;
+}
+
+/* ============================================================
    Money breakdown — see Breakdown.tsx for why it is shaped this way.
 
    ROW_MIN_H is the load-bearing number. Every drill and every selection
