@@ -121,15 +121,12 @@ export default function Reminders() {
             <div className="card__sub">Sent vs. paid, last 6 months</div>
           </div>
         </div>
-        {/* Always drawn, even when every month is zero.
-
-            It used to be replaced by a paragraph, which read as a broken
-            card — the heading promised six months of a chart and the
-            space under it was prose. An empty chart is not blank: the
-            axis floors at 1, so the grid and all six month labels are
-            there, and "nothing happened in any of them" is a fact the
-            shape states better than a sentence can. The note below just
-            says why it is flat. */}
+        {/* Always drawn, even when every month is zero — the grid, the
+            axis and all six months stay put, and `empty` puts one quiet
+            line in the middle of the space. It used to swap the chart
+            for a two-sentence paragraph, which read as a card that had
+            failed to load: the heading promises six months of a chart
+            and prose turned up instead. */}
         <BarChart
           data={activity.map((a) => ({ label: monthShort(a.key), sent: a.sent, paid: a.paid }))}
           series={[
@@ -137,13 +134,8 @@ export default function Reminders() {
             { key: 'paid', label: 'Paid after reminder', color: 'var(--series-3)' },
           ]}
           format={(n) => `${n}`}
+          empty="No reminders sent yet"
         />
-        {!activity.some((a) => a.sent > 0 || a.paid > 0) && (
-          <p className="t-mut" style={{ marginTop: 10, textAlign: 'center' }}>
-            No reminders sent in these six months. Once you send some, this tracks how many go
-            out and how many end in payment.
-          </p>
-        )}
       </div>
 
       <p className="t-mut" style={{ marginBottom: 12, lineHeight: 1.5 }}>

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
 /* ==================================================================
    Charts — hand-rolled SVG, no charting dependency.
@@ -12,6 +12,41 @@ import { useCallback, useRef, useState, type ReactNode } from 'react'
    · every plot has a tap/hover tooltip (pointer events, so a finger
      works the same as a mouse)
    ================================================================== */
+
+/**
+ * The chart's real width in CSS pixels.
+ *
+ * Every plot here used `viewBox="0 0 340 …"` with `width: 100%` and
+ * `preserveAspectRatio="none"`, which stretches the drawing to fill its
+ * box on the X axis while the Y axis stays fixed by `style.height`. The
+ * marks survive that — a bar is a rectangle either way — but the TEXT
+ * does not. Month labels came out squashed on a narrow card and visibly
+ * widened on a roomy one, because glyphs were being scaled 1.7x
+ * horizontally and 1x vertically.
+ *
+ * Measuring the box and setting the viewBox to match makes the scale
+ * exactly 1:1 in both directions, so type renders at its true shape at
+ * every width. 340 is only the value used for the first paint, before
+ * the observer has reported.
+ */
+function useChartWidth(fallback = 340): [React.RefObject<HTMLDivElement>, number] {
+  const box = useRef<HTMLDivElement>(null)
+  const [w, setW] = useState(fallback)
+  useEffect(() => {
+    const el = box.current
+    if (!el) return
+    const read = () => {
+      const next = Math.round(el.getBoundingClientRect().width)
+      if (next > 0) setW(next)
+    }
+    read()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(read)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return [box, w]
+}
 
 export const SERIES = [
   'var(--series-1)',
@@ -132,6 +167,7 @@ export function BarChart({
   showLegend = true,
   valueLabels = false,
   onSelect,
+  empty,
 }: {
   data: Array<{ label: string } & Record<string, string | number>>
   series: BarSeries[]
@@ -144,10 +180,19 @@ export function BarChart({
   /** Single-series only: print each value above its bar. Use when the
       values sit close together and the shape alone won't carry them. */
   valueLabels?: boolean
+  /** Shown INSIDE the plot when every value is zero.
+   *
+   *  A six-month chart with nothing in it is a real answer, not a
+   *  failure, and it should look like one: the grid, the axis and all
+   *  six months stay exactly where they are, and this sits quietly in
+   *  the middle of the empty space. The alternative — a paragraph
+   *  underneath — reads as a card that failed to load, because the
+   *  heading promises a chart and prose turns up instead. */
+  empty?: string
 }) {
   const { show, hide, node } = useTip()
   const labelled = valueLabels && series.length === 1
-  const W = 340
+  const [box, W] = useChartWidth()
   const H = height
   const padL = 4
   const padR = 4
@@ -172,12 +217,17 @@ export function BarChart({
 
   const y = (v: number) => padT + plotH - (v / max) * plotH
 
+  /* Not `max === 1`: a chart whose real values are all 1 would also
+     floor there, and that one has bars. This asks the data. */
+  const allZero =
+    data.length > 0 &&
+    data.every((d) => series.every((sr) => (Number(d[sr.key]) || 0) === 0))
+
   return (
-    <div>
+    <div ref={box}>
       <svg
         className="chart"
         viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="none"
         style={{ height: H }}
         onPointerLeave={hide}
       >
@@ -275,6 +325,18 @@ export function BarChart({
         })}
 
         <line className="axis-line" x1={padL} x2={W - padR} y1={padT + plotH} y2={padT + plotH} />
+
+        {empty && allZero && (
+          <text
+            className="chart__empty"
+            x={W / 2}
+            y={padT + plotH / 2}
+            textAnchor="middle"
+            dominantBaseline="central"
+          >
+            {empty}
+          </text>
+        )}
       </svg>
       {showLegend && series.length > 1 && (
         <Legend items={series.map((s) => ({ label: s.label, color: s.color }))} />
@@ -484,7 +546,7 @@ export function TrendChart({
   const [active, setActive] = useState<number | null>(null)
   const ref = useRef<SVGSVGElement | null>(null)
 
-  const W = 340
+  const [box, W] = useChartWidth()
   const H = height
   const padT = 12
   const padB = 22
@@ -529,12 +591,11 @@ export function TrendChart({
   }
 
   return (
-    <div>
+    <div ref={box}>
       <svg
         ref={ref}
         className="chart"
         viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="none"
         style={{ height: H }}
         onPointerMove={(e) => {
           const i = pick(e.clientX)

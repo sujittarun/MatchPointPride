@@ -1063,6 +1063,25 @@ ul {
   font-size: 10px;
 }
 
+/* The centred line in an all-zero plot. Deliberately quiet — it is a
+   caption for empty space, not a headline.
+
+   The stroke is a KNOCKOUT, not an outline: it is painted in the card's
+   own colour UNDER the glyphs (`paint-order`), so the 50% grid line —
+   which passes exactly through the middle of the plot, where this text
+   sits — is masked either side of the words instead of striking through
+   them. Without it the label reads as crossed out. */
+.chart .chart__empty {
+  fill: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  paint-order: stroke fill;
+  stroke: var(--surface-1);
+  stroke-width: 6px;
+  stroke-linejoin: round;
+}
+
 .chart__legend {
   display: flex;
   flex-wrap: wrap;
