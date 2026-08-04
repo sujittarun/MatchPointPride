@@ -196,6 +196,13 @@ export interface Transaction {
   bookingMode?: BookingMode
   studentId?: string
   batchId?: string
+  /**
+   * Joining fee, renewal, or a one-off. Straight from `payments.kind` —
+   * the database already records which, and the Finance list was
+   * throwing it away and showing every fee as the same anonymous
+   * "Coaching".
+   */
+  feeKind?: 'renewal' | 'admission' | 'custom'
   note?: string
   /** Screenshot that evidences this payment, if one was supplied. */
   proofImageId?: string

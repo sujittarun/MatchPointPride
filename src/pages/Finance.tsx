@@ -52,6 +52,9 @@ export default function Finance() {
   const [filter, setFilter] = useState<ListFilter>('all')
   const [adding, setAdding] = useState<TxnType | null>(null)
   const [delTxn, setDelTxn] = useState<Transaction | null>(null)
+  /* Which month's split is open. A month key, not a boolean — the chart
+     shows six and the sheet has to know which was tapped. */
+  const [breakdown, setBreakdown] = useState<string | null>(null)
 
   const months = useMemo(() => lastMonths(6, currentMonthKey()), [])
   const series = useMemo(() => moneyByMonth(data.transactions, months), [data.transactions, months])
@@ -70,6 +73,29 @@ export default function Finance() {
     () => expenseByCategory(data.transactions, month),
     [data.transactions, month],
   )
+
+  /* Who paid, and for what. Both come off the row already: `studentId`
+     from payments.member_id, `feeKind` from payments.kind. */
+  const nameOf = (id?: string) =>
+    id ? data.students.find((s) => s.id === id)?.name : undefined
+
+  const titleOf = (t: Transaction) => {
+    if (t.source === 'student_fee') return nameOf(t.studentId) ?? 'Student fee'
+    return t.category
+  }
+
+  const subtitleOf = (t: Transaction) => {
+    if (t.source !== 'student_fee') return ''
+    const what =
+      t.feeKind === 'admission' ? 'Joining fee'
+      : t.feeKind === 'custom' ? 'One-off'
+      : 'Renewal'
+    // The month it is FOR, which is not always the month it arrived in.
+    const forM = t.forMonth && t.forMonth !== t.date.slice(0, 7)
+      ? ` for ${monthLabel(t.forMonth)}`
+      : ''
+    return ` · ${what}${forM}`
+  }
 
   const txns = useMemo(() => {
     return data.transactions
@@ -190,7 +216,7 @@ export default function Finance() {
         <div className="card__head">
           <div>
             <div className="card__title">In vs out</div>
-            <div className="card__sub">Last 6 months</div>
+            <div className="card__sub">Last 6 months · tap a month for the split</div>
           </div>
         </div>
         <BarChart
@@ -204,6 +230,7 @@ export default function Finance() {
             { key: 'expense', label: 'Expenses', color: 'var(--money-out)' },
           ]}
           format={(n) => inr(n)}
+          onSelect={(_label, i) => setBreakdown(series[i].key)}
         />
       </div>
 
@@ -294,9 +321,15 @@ export default function Finance() {
                   {income ? <IconArrowUp size={14} /> : <IconArrowDown size={14} />}
                 </span>
                 <div className="listrow__main">
-                  <div className="listrow__title">{t.category}</div>
+                  {/* A fee is somebody's fee. The row used to say
+                      "Coaching" for all of them, which told the owner
+                      the least useful true thing available — the name
+                      and whether it was a joining fee or a renewal were
+                      both already on the row, unread. */}
+                  <div className="listrow__title">{titleOf(t)}</div>
                   <div className="listrow__meta">
                     {dateLabel(t.date)}
+                    {subtitleOf(t)}
                     {t.source === 'court_booking' && t.bookingMode
                       ? ` · ${t.bookingMode === 'daily' ? 'day total' : t.bookingMode === 'monthly' ? 'month total' : 'single booking'}`
                       : ''}
@@ -324,6 +357,80 @@ export default function Finance() {
           })}
         </div>
       )}
+
+      {/* The split behind one bar.
+
+          The chart answers "how much" and the tooltip repeats it. The
+          question underneath — what is that made of — needed room, so it
+          gets a sheet: every revenue source and every expense category
+          for that month, with the net at the top. Reuses the same
+          selectors the month view already uses, so a figure here can
+          never disagree with the one above it. */}
+      <Sheet
+        open={breakdown !== null}
+        onClose={() => setBreakdown(null)}
+        title={breakdown ? monthLabel(breakdown) : ''}
+        subtitle="Where the money came from and went"
+      >
+        {breakdown && (() => {
+          const t = monthTotals(data.transactions, breakdown)
+          const rev = revenueBySource(data.transactions, breakdown)
+          const exp = expenseByCategory(data.transactions, breakdown)
+          const row = (label: string, value: number, total: number, color: string) => (
+            <div className="split__row" key={label}>
+              <div className="split__head">
+                <span className="split__label">{label}</span>
+                <span className="split__value num">{inr(value)}</span>
+              </div>
+              <div className="split__track">
+                <span
+                  className="split__fill"
+                  style={{ width: `${total > 0 ? (value / total) * 100 : 0}%`, background: color }}
+                />
+              </div>
+              <span className="split__pct">
+                {total > 0 ? `${Math.round((value / total) * 100)}%` : '—'}
+              </span>
+            </div>
+          )
+          return (
+            <div className="split">
+              <div className="split__net">
+                <span className="t-label">Net</span>
+                <span
+                  className="num"
+                  style={{
+                    fontSize: '1.6rem', fontWeight: 690, letterSpacing: '-0.03em',
+                    color: t.net >= 0 ? '#5fd3a5' : '#ff8f8f',
+                  }}
+                >
+                  {t.net < 0 ? '−' : ''}{inr(Math.abs(t.net))}
+                </span>
+              </div>
+
+              <div className="split__group">
+                <div className="split__title">
+                  <IconArrowUp size={14} style={{ color: 'var(--money-in)' }} />
+                  In · {inr(t.revenue)}
+                </div>
+                {rev.length === 0
+                  ? <p className="t-mut">Nothing came in this month.</p>
+                  : rev.map((r) => row(r.label, r.value, t.revenue, 'var(--money-in)'))}
+              </div>
+
+              <div className="split__group">
+                <div className="split__title">
+                  <IconArrowDown size={14} style={{ color: 'var(--money-out)' }} />
+                  Out · {inr(t.expense)}
+                </div>
+                {exp.length === 0
+                  ? <p className="t-mut">Nothing went out this month.</p>
+                  : exp.map((e) => row(e.label, e.value, t.expense, 'var(--money-out)'))}
+              </div>
+            </div>
+          )
+        })()}
+      </Sheet>
 
       <TxnSheet type={adding} month={month} onClose={() => setAdding(null)} />
 

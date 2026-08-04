@@ -249,6 +249,15 @@ async function request(
 
   const res = await fetch(`${PROJECT}/rest/v1${path}`, {
     method,
+    /* Never from the cache.
+
+       PostgREST sends no Cache-Control, so a browser — and an Android
+       WebView especially — is free to decide for itself how long a GET
+       to the same URL stays fresh. The reads here all hit stable URLs,
+       so the owner would add a student, the app would re-read, and the
+       WebView would hand back the answer from before the write. The
+       screen looked broken and the database was fine. */
+    cache: 'no-store',
     headers: {
       apikey: ANON,
       Authorization: `Bearer ${session?.access_token ?? ''}`,

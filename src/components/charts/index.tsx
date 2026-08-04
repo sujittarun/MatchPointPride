@@ -131,12 +131,16 @@ export function BarChart({
   format,
   showLegend = true,
   valueLabels = false,
+  onSelect,
 }: {
   data: Array<{ label: string } & Record<string, string | number>>
   series: BarSeries[]
   height?: number
   format: (n: number) => string
   showLegend?: boolean
+  /** Tapping a column. The tooltip says how much; this is for "and made
+      up of what", which needs more room than a tooltip has. */
+  onSelect?: (label: string, index: number) => void
   /** Single-series only: print each value above its bar. Use when the
       values sit close together and the shape alone won't carry them. */
   valueLabels?: boolean
@@ -229,6 +233,8 @@ export function BarChart({
                 width={groupW}
                 height={plotH}
                 fill="transparent"
+                style={onSelect ? { cursor: 'pointer' } : undefined}
+                onClick={() => onSelect?.(d.label, i)}
                 onPointerDown={(e) =>
                   show(
                     e,

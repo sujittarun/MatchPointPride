@@ -1382,3 +1382,111 @@ input.input--live {
   background: var(--brand-wash);
   font-weight: 600;
 }
+
+/* The brand mark doubles as the reload, so it has to look pressable
+   without becoming a button in the visual hierarchy — it is still the
+   page's identity first. */
+.brandmark--tap {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.brandmark--tap:active {
+  opacity: 0.55;
+}
+
+.brandmark--tap:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+  border-radius: var(--r-sm);
+}
+
+/* Pull to reload. Height is driven from JS so it tracks the finger; the
+   transition only applies on the way back, which is why it is on
+   `height` and the pull sets height directly. */
+.pull {
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.76rem;
+  font-weight: 560;
+  color: var(--ink-muted);
+  background: var(--surface-1);
+}
+
+.pull__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--brand);
+}
+
+.pull--busy .pull__dot {
+  animation: pull-spin 700ms linear infinite;
+}
+
+@keyframes pull-spin {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(0.45); opacity: 0.5; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pull--busy .pull__dot { animation: none; }
+}
+
+/* The in-vs-out split sheet. */
+.split { display: flex; flex-direction: column; gap: 20px; }
+
+.split__net {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.split__group { display: flex; flex-direction: column; gap: 12px; }
+
+.split__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.86rem;
+  font-weight: 640;
+}
+
+.split__row { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; }
+
+.split__head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.split__label { font-size: 0.85rem; color: var(--ink-secondary); }
+.split__value { font-size: 0.88rem; font-weight: 640; }
+
+.split__track {
+  height: 6px;
+  border-radius: 99px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.split__fill { display: block; height: 100%; border-radius: 99px; }
+
+.split__pct {
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+  min-width: 30px;
+  text-align: right;
+}

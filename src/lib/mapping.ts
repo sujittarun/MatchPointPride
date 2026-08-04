@@ -244,6 +244,7 @@ export function toTransactions(payments: PaymentRow[], expenses: ExpenseRow[]): 
       p.type === 'Court' ? 'court_booking' : p.type === 'Membership' ? 'membership'
         : p.enrollment_id ? 'student_fee' : 'other',
     studentId: p.member_id ? String(p.member_id) : undefined,
+    feeKind: (p.kind ?? undefined) as Transaction['feeKind'],
     note: p.note ?? undefined,
     // The object key, not a URL: links to a private bucket expire, so
     // one is asked for at the moment it is shown.

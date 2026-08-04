@@ -13,6 +13,7 @@ import {
 } from './components/icons'
 import { overdueReminders, unmarkedToday } from './lib/selectors'
 import { useNativeShell } from './lib/native'
+import { usePullToRefresh } from './lib/pullToRefresh'
 import BrandMark from './components/BrandMark'
 import { ACADEMY } from './lib/academy'
 
@@ -54,6 +55,10 @@ export default function App() {
      gesture has to work on the locked gate too, where the only screen
      rendered is Landing. */
   useNativeShell(refresh)
+
+  /* Pull down to reload. Hooked above the early returns so the rule of
+     hooks holds on the landing gate too, where it simply never fires. */
+  const pull = usePullToRefresh(refresh)
 
   /* The payment page is public and stays public.
 
@@ -109,16 +114,39 @@ export default function App() {
 
   return (
     <div className="shell">
+      {/* Sits above everything and takes no space until pulled, so the
+          layout does not shift under the finger. */}
+      <div
+        className={`pull${pull.refreshing ? ' pull--busy' : ''}`}
+        style={{ height: pull.progress > 0 ? Math.round(pull.progress * 46) : 0 }}
+        aria-hidden={pull.progress === 0}
+      >
+        <span className="pull__dot" style={{ opacity: pull.progress }} />
+        <span className="pull__text">
+          {pull.refreshing ? 'Reloading…' : pull.progress >= 1 ? 'Release to reload' : 'Pull to reload'}
+        </span>
+      </div>
       {banner}
       <header className="topbar">
         <div className="topbar__inner">
-          <div className="brandmark">
+          {/* The mark is the reload. It is where a hand goes when a
+              screen looks stale, and it did nothing — so the owner
+              pressed it, saw no change, and concluded the data was
+              wrong rather than the button absent. */}
+          <button
+            className="brandmark brandmark--tap"
+            onClick={() => void refresh()}
+            aria-label="Reload from the academy database"
+            title="Tap to reload"
+          >
             <BrandMark size={36} />
-            <div style={{ minWidth: 0 }}>
+            <div style={{ minWidth: 0, textAlign: 'left' }}>
               <div className="topbar__title">{title}</div>
-              <div className="topbar__sub">{ACADEMY.name}</div>
+              <div className="topbar__sub">
+                {loading ? 'Reloading…' : ACADEMY.name}
+              </div>
             </div>
-          </div>
+          </button>
           <div className="row gap-2" style={{ flexShrink: 0 }}>
             <button
               className="btn btn--ghost btn--icon"
