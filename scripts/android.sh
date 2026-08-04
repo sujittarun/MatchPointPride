@@ -32,6 +32,8 @@ JAVA_HOME_FOUND=""
 for CANDIDATE in \
   "$(/usr/libexec/java_home -v 21 2>/dev/null || true)" \
   "/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
+  "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home" \
+  "/usr/local/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home" \
   "${JAVA_HOME:-}"; do
   [ -n "$CANDIDATE" ] && [ -x "$CANDIDATE/bin/java" ] || continue
   [ "$(java_major "$CANDIDATE")" -ge 21 ] 2>/dev/null || continue
@@ -42,7 +44,9 @@ done
 if [ -z "$JAVA_HOME_FOUND" ]; then
   echo "No JDK 21+ found. Capacitor 8 needs one." >&2
   echo "Either install Android Studio (its bundled runtime is a 21)," >&2
-  echo "or: brew install --cask temurin@21" >&2
+  echo "or: brew install --cask temurin@21
+   (brew install openjdk@21 works too — it is keg-only, so java_home
+    cannot see it, but the candidate list below now looks there)" >&2
   exit 1
 fi
 export JAVA_HOME="$JAVA_HOME_FOUND"
