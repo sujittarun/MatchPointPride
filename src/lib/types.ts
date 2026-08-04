@@ -192,6 +192,9 @@ export interface Transaction {
   amount: number
   /** Expense category, or a revenue label. */
   category: string
+  /** What this was, in words — "Court 3 · 7:00 PM". Written by the
+      form, shown verbatim in the ledger, never parsed back apart. */
+  detail?: string
   source?: RevenueSource
   bookingMode?: BookingMode
   studentId?: string

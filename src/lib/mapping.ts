@@ -240,6 +240,7 @@ export function toTransactions(payments: PaymentRow[], expenses: ExpenseRow[]): 
     forMonth: p.period_from ? p.period_from.slice(0, 7) : p.on_date.slice(0, 7),
     amount: Number(p.amount),
     category: p.type || 'Coaching',
+    detail: p.detail ?? undefined,
     source:
       p.type === 'Court' ? 'court_booking' : p.type === 'Membership' ? 'membership'
         : p.enrollment_id ? 'student_fee' : 'other',

@@ -19,6 +19,25 @@ function trim(n: number): string {
   return n.toFixed(n < 10 ? 1 : 0).replace(/\.0$/, '')
 }
 
+/**
+ * A 24-hour clock hour as the label a parent would say: 17 -> "5:00 PM".
+ *
+ * Hours only. Courts here are booked by the hour, and a minute picker
+ * would be three more taps on a phone for a precision nobody uses.
+ */
+export function hourLabel(h: number): string {
+  const ap = h >= 12 ? 'PM' : 'AM'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:00 ${ap}`
+}
+
+/** Every bookable hour, inclusive of both ends. */
+export function hourRange(from: number, to: number): number[] {
+  const out: number[] = []
+  for (let h = from; h <= to; h++) out.push(h)
+  return out
+}
+
 export function pct(n: number, digits = 0): string {
   if (!isFinite(n)) return '—'
   return `${n.toFixed(digits)}%`

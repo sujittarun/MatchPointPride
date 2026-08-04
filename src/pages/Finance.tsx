@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../lib/store'
+import { ACADEMY } from '../lib/academy'
 import {
   EXPENSE_CATEGORIES,
-  type BookingMode,
   type RevenueSource,
   type Transaction,
   type TxnType,
@@ -11,6 +11,8 @@ import {
   MAX_AMOUNT,
   currentMonthKey,
   dateLabel,
+  hourLabel,
+  hourRange,
   inr,
   lastMonths,
   monthLabel,
@@ -41,13 +43,6 @@ import {
 
 type ListFilter = 'all' | 'revenue' | 'expense'
 
-const SOURCE_LABEL: Record<RevenueSource, string> = {
-  student_fee: 'Student fee',
-  court_booking: 'Court booking',
-  membership: 'Membership',
-  other: 'Other',
-}
-
 export default function Finance() {
   const { data, toast, removeEntry } = useStore()
   const [month, setMonth] = useState(currentMonthKey())
@@ -76,10 +71,16 @@ export default function Finance() {
 
   const titleOf = (t: Transaction) => {
     if (t.source === 'student_fee') return nameOf(t.studentId) ?? 'Student fee'
+    /* `category` is the raw payments.type, which is the bare word "Court".
+       With the court and time now in the subtitle that read "Court ·
+       Court 3 · 7:00 PM". */
+    if (t.source === 'court_booking') return 'Court booking'
     return t.category
   }
 
   const subtitleOf = (t: Transaction) => {
+    // "Court 3 · 7:00 PM", exactly as it was written when recorded.
+    if (t.detail) return ` · ${t.detail}`
     if (t.source !== 'student_fee') return ''
     const what =
       t.feeKind === 'admission' ? 'Joining fee'
@@ -497,7 +498,8 @@ function TxnSheet({
   const { data, toast, addRevenue, addExpense, recordFee } = useStore()
   const [tab, setTab] = useState<TxnType>('revenue')
   const [source, setSource] = useState<RevenueSource>('court_booking')
-  const [bookingMode, setBookingMode] = useState<BookingMode>('daily')
+  const [court, setCourt] = useState(1)
+  const [hour, setHour] = useState(18)
   const [category, setCategory] = useState<string>(EXPENSE_CATEGORIES[0])
   const [studentId, setStudentId] = useState('')
   const [amount, setAmount] = useState('')
@@ -549,13 +551,18 @@ function TxnSheet({
         r = await recordFee({ enrollmentId: student.enrollmentId, amount: amt, onDate: date, note: note.trim() || undefined })
       } else {
         r = await addRevenue({
-          label:
-            source === 'court_booking' ? 'Court Booking'
-              : source === 'membership' ? 'Membership'
-                : 'Other income',
+          label: source === 'court_booking' ? 'Court Booking' : 'Other income',
           amount: amt,
           onDate: date,
-          kind: source === 'court_booking' ? 'Court' : source === 'membership' ? 'Membership' : 'Coaching',
+          kind: source === 'court_booking' ? 'Court' : 'Coaching',
+          /* Written as the sentence it will be read as, and stored in
+             payments.detail — the column the seeded court rows already
+             use for exactly this. Never parsed back apart: the ledger
+             prints it verbatim, so there is no format to break. */
+          detail:
+            source === 'court_booking'
+              ? `Court ${court} · ${hourLabel(hour)}`
+              : undefined,
           note: note.trim() || undefined,
         })
       }
@@ -604,45 +611,61 @@ function TxnSheet({
       <div className="form-grid">
         {tab === 'revenue' ? (
           <>
+            {/* Two sources, not four.
+
+                A student's fee is not added here any more. It has its own
+                path — the reminder, or the student's own screen — which
+                goes through record_fee_payment and therefore rolls the
+                renewal forward and closes the reminder. The copy on this
+                sheet did call recordFee, but it was a second door into
+                the money that looked like plain data entry, and
+                Membership was a source nothing at Pride sells. */}
             <Field label="Source" span>
               <select
                 className="select"
                 value={source}
                 onChange={(e) => setSource(e.target.value as RevenueSource)}
               >
-                {(Object.keys(SOURCE_LABEL) as RevenueSource[]).map((s) => (
-                  <option key={s} value={s}>
-                    {SOURCE_LABEL[s]}
-                  </option>
-                ))}
+                <option value="court_booking">Court booking</option>
+                <option value="other">Other</option>
               </select>
             </Field>
 
             {source === 'court_booking' && (
-              <Field
-                label="Booking entry"
-                hint="Log one booking, a day’s total, or a whole month in one go."
-                span
-              >
-                <div className="seg" style={{ width: '100%' }}>
-                  {(
-                    [
-                      ['individual', 'Single'],
-                      ['daily', 'Per day'],
-                      ['monthly', 'Per month'],
-                    ] as Array<[BookingMode, string]>
-                  ).map(([m, label]) => (
-                    <button
-                      key={m}
-                      type="button"
-                      className={`seg__item grow${bookingMode === m ? ' seg__item--on' : ''}`}
-                      onClick={() => setBookingMode(m)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </Field>
+              <>
+                {/* The "Single / Per day / Per month" control that used to
+                    sit here decided nothing: `bookingMode` was set by three
+                    buttons and never read by save(). Same fault as the "Fee
+                    for" month picker removed below — a control that looks
+                    like it changes the record and does not. */}
+                <Field label="Court">
+                  <select
+                    className="select"
+                    value={court}
+                    onChange={(e) => setCourt(Number(e.target.value))}
+                  >
+                    {Array.from({ length: ACADEMY.courtCount }, (_, i) => i + 1).map((c) => (
+                      <option key={c} value={c}>
+                        Court {c}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <Field label="Time">
+                  <select
+                    className="select"
+                    value={hour}
+                    onChange={(e) => setHour(Number(e.target.value))}
+                  >
+                    {hourRange(ACADEMY.bookingHours.from, ACADEMY.bookingHours.to).map((h) => (
+                      <option key={h} value={h}>
+                        {hourLabel(h)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </>
             )}
 
             {source === 'student_fee' && (

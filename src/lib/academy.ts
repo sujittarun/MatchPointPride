@@ -46,6 +46,15 @@ export const ACADEMY = {
   courts: '7 indoor courts',
   hours: '5 AM – 1 AM',
 
+  /* The same two facts, in a form a <select> can use. Kept beside the
+     display strings so the prose and the dropdown cannot drift.
+
+     `bookingHours.to` is 23, not the 1 AM the venue advertises: the
+     owner asked for a 5 AM–11 PM list. If the small hours ever need
+     booking, raise it here and the dropdown follows. */
+  courtCount: 7,
+  bookingHours: { from: 5, to: 23 },
+
   /** Set this to switch on the public WhatsApp enquiry buttons. */
   enquiryPhone: '' as string,
   countryCode: '91' as string,

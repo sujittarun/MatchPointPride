@@ -837,6 +837,8 @@ export async function addRevenue(a: {
   amount: number
   onDate: string
   kind: 'Court' | 'Membership' | 'Coaching'
+  /** Which court and when — "Court 3 · 7:00 PM". Free text by design. */
+  detail?: string
   note?: string
 }): Promise<void> {
   await request('POST', '/payments', {
@@ -847,6 +849,7 @@ export async function addRevenue(a: {
     mode: 'UPI',
     on_date: a.onDate,
     status: 'paid',
+    detail: a.detail ?? null,
     note: a.note ?? null,
   })
   track('payment_recorded', { amount: Math.round(a.amount), mode: a.kind })
@@ -1120,6 +1123,7 @@ export type PaymentRow = {
   status: string | null
   ref: string | null
   note: string | null
+  detail: string | null
   proof_path: string | null
 }
 export type CoachRow = { id: number; name: string; role: string; phone: string | null; active: boolean }
@@ -1172,7 +1176,7 @@ export const read = {
   payments: (sinceISO: string) =>
     select<PaymentRow>(
       'payments',
-      `select=id,member_id,enrollment_id,type,kind,amount,mode,on_date,period_from,period_to,status,ref,note,proof_path&on_date=gte.${sinceISO}&order=on_date.desc`,
+      `select=id,member_id,enrollment_id,type,kind,amount,mode,on_date,period_from,period_to,status,ref,note,detail,proof_path&on_date=gte.${sinceISO}&order=on_date.desc`,
     ),
   coaches: () => select<CoachRow>('coaches', 'select=id,name,role,phone,active&order=name'),
   expenses: (sinceISO: string) =>

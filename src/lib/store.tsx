@@ -167,7 +167,7 @@ interface Ctx {
   saveBatch: (a: { id?: string; name: string; days: number[]; startTime: string; endTime: string; capacity?: number | null; fee: number }) => Promise<{ ok: boolean; message: string }>
   removeBatch: (id: string) => Promise<{ ok: boolean; message: string }>
   recordFee: (a: { enrollmentId: number; amount: number; onDate?: string; mode?: string; note?: string }) => Promise<{ ok: boolean; message: string; paymentId?: number }>
-  addRevenue: (a: { label: string; amount: number; onDate: string; kind: 'Court' | 'Membership' | 'Coaching'; note?: string }) => Promise<{ ok: boolean; message: string }>
+  addRevenue: (a: { label: string; amount: number; onDate: string; kind: 'Court' | 'Membership' | 'Coaching'; detail?: string; note?: string }) => Promise<{ ok: boolean; message: string }>
   addExpense: (a: { category: string; amount: number; onDate: string; note?: string }) => Promise<{ ok: boolean; message: string }>
   logReminderSent: (a: { enrollmentId: number; stage: string; amount: number | null; phone: string | null; body: string; channel: 'whatsapp' | 'sms' | 'call' }) => Promise<{ ok: boolean; message: string }>
   removeEntry: (a: { kind: 'payment' | 'expense'; id: number }) => Promise<{ ok: boolean; message: string }>
@@ -422,7 +422,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   )
 
   const addRevenue = useCallback(
-    (a: { label: string; amount: number; onDate: string; kind: 'Court' | 'Membership' | 'Coaching'; note?: string }) =>
+    (a: { label: string; amount: number; onDate: string; kind: 'Court' | 'Membership' | 'Coaching'; detail?: string; note?: string }) =>
       write('add revenue', () => cloudAddRevenue(a)),
     [write],
   )

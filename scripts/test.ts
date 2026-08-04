@@ -1,10 +1,11 @@
 /* Regression suite. Runs the real modules — no mocks, no framework.
    npm test  */
+import { readFileSync } from 'node:fs'
 import {
   addDays, currentMonthKey, dateLabelFull, daysBetween, daysInMonth, dueLabel,
   clampDay, fromISO, inr, initials, isSunday, lastMonths, monthDates, monthLabel,
   dueDateFor, daysToFirstFee, FIRST_FEE_MIN_GAP, FIRST_FEE_WARN_DAYS, firstDueDate,
-  nextDueDate, ordinal, renewalAfterFeeDayChange,
+  hourLabel, hourRange, nextDueDate, ordinal, renewalAfterFeeDayChange,
   shiftMonth, toISO, todayISO, uid, weekday,
 } from '../src/lib/format'
 import {
@@ -1275,6 +1276,43 @@ function report(): void {
 
   eq('payLink omits a zero amount', new URLSearchParams(
        payLink({ ...d, amount: 0 }).split('?')[1]).get('a'), null)
+}
+
+/* ------------------------------------------------------------------
+   Court booking: the hour list, and the read that has to fetch it
+   ------------------------------------------------------------------ */
+{
+  eq('hourLabel: opening time', hourLabel(5), '5:00 AM')
+  eq('hourLabel: noon is 12 PM, not 0 PM', hourLabel(12), '12:00 PM')
+  eq('hourLabel: midnight is 12 AM', hourLabel(0), '12:00 AM')
+  eq('hourLabel: evening', hourLabel(18), '6:00 PM')
+  eq('hourLabel: last slot', hourLabel(23), '11:00 PM')
+
+  const hrs = hourRange(5, 23)
+  eq('hourRange: 5am to 11pm inclusive', hrs.length, 19)
+  eq('hourRange: starts at opening', hourLabel(hrs[0]), '5:00 AM')
+  eq('hourRange: ends at closing', hourLabel(hrs[hrs.length - 1]), '11:00 PM')
+  ok('hourRange: no gaps', hrs.every((h, i) => i === 0 || h === hrs[i - 1] + 1))
+
+  /* A field added to PaymentRow but not to the PostgREST select arrives
+     undefined for ever, and nothing fails — the type says it is there,
+     the row simply has not got it. That is exactly how `detail` would
+     have silently never reached the ledger, so the query is checked
+     against the type rather than trusted. */
+  // cwd-relative: npm runs scripts from the package root, and
+  // import.meta.url does not survive esbuild's CJS bundle.
+  const src = readFileSync('src/lib/cloud.ts', 'utf8')
+  const rowBlock = src.slice(
+    src.indexOf('export type PaymentRow = {'),
+    src.indexOf('export type CoachRow'),
+  )
+  const fields = [...rowBlock.matchAll(/^\s{2}(\w+)\??:/gm)].map((m) => m[1])
+  const select = (src.match(/select=id,member_id,enrollment_id[^`&]*/) ?? [''])[0]
+  const asked = select.replace('select=', '').split(',')
+  ok('PaymentRow has fields to check', fields.length > 10, String(fields.length))
+  for (const f of fields) {
+    ok(`payments select asks for ${f}`, asked.includes(f), `select = ${select}`)
+  }
 }
 
 /* The synchronous assertions above have already run. The vault is async
