@@ -874,13 +874,30 @@ ul {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(4, 6, 9, 0.66);
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
+  /* Opaque enough to do the job the blur was doing. Raised from .66
+     because the blur is gone. */
+  background: rgba(4, 6, 9, 0.82);
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  animation: fade-in 200ms var(--ease) both;
+  animation: fade-in 160ms var(--ease) both;
+
+  /* NO backdrop-filter. This is why "Add student", "Add revenue" and
+     "Add expense" all took a beat to open — the same wait on three
+     buttons across two pages with completely different data, which is
+     the signature of a shared cost rather than a slow query.
+
+     `inset: 0` makes the backdrop root the entire document, so opening a
+     sheet asked the compositor to snapshot and gaussian-blur the whole
+     scrolling page — the shell's three radial gradients, every SVG
+     chart, the full ledger — on a ~2.6MP phone screen. It also sat on
+     top of two more backdrop-filters (.topbar blur(18px), .tabbar
+     blur(20px)) which had to be resolved first, and because the element
+     carrying the filter also animates its own opacity, the blur was
+     invalidated and redone for every frame of the fade.
+
+     None of that scales with data, which is exactly why it felt like the
+     same delay every time. */
 }
 
 @keyframes fade-in {
@@ -1085,59 +1102,84 @@ ul {
 /* ============================================================
    AM / PM shift pills on the staff roster.
 
-   Two toggles, not a Present/Absent pair: turning both off IS absent,
-   because the shared CHECK derives `present` from the halves. They are
-   small on purpose — three names and two pills have to share 315px on a
-   375px phone — but never below the 44px the rest of the app holds to.
+   Three states — worked, did not, nobody has said — shown by a tick, a
+   cross, or nothing.
+
+   WHY THIS FEELS INSTANT, which is mostly not about speed:
+
+   1. The glyph slot is ALWAYS reserved (.shift__mark has a fixed width
+      whether or not it holds anything), so the pill is exactly the same
+      size in all three states. It used to grow when the tick appeared,
+      which reflowed the whole row on every tap — a layout shift under
+      the thumb reads as lag no matter how fast the write is.
+   2. `:active` scales the pill in the same frame as the touch, before
+      any promise resolves. The response is no longer waiting on the
+      network at all; the store applies the change optimistically.
+   3. Transitions are short and asymmetric — quick to light up, slightly
+      slower to fade — and only `transform`/`background-color`/`color`
+      are animated, all compositor-friendly.
    ============================================================ */
 .shift {
-  min-width: 58px;
+  /* Fixed, not min-width: three states, one footprint. */
+  width: 58px;
   min-height: 44px;
-  padding: 8px 10px;
-  border-radius: 11px;
+  padding: 8px 6px;
+  border-radius: 12px;
   border: 1px solid var(--line-strong);
   background: var(--surface-2);
   color: var(--ink-secondary);
-  font-weight: 560;
-  font-size: 0.79rem;
-  letter-spacing: 0.03em;
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  user-select: none;
   transition:
-    background 140ms var(--ease),
-    color 140ms var(--ease),
-    border-color 140ms var(--ease);
+    transform 90ms cubic-bezier(0.2, 0, 0, 1),
+    background-color 130ms cubic-bezier(0.2, 0, 0, 1),
+    border-color 130ms cubic-bezier(0.2, 0, 0, 1),
+    color 130ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-.shift:hover {
-  border-color: var(--ink-muted);
+/* The whole point: feedback on touchdown, not on response. */
+.shift:active {
+  transform: scale(0.93);
+  transition-duration: 60ms;
 }
 
-/* Three states, and the glyph carries as much of the meaning as the
-   colour does: a tick, a cross, or nothing. Colour alone would leave
-   the two marked states indistinguishable to anyone who cannot tell
-   green from red, and blank-vs-filled is exactly what the owner said
-   was unreadable. */
 .shift--yes {
   background: var(--money-in);
   border-color: transparent;
-  color: rgba(0, 0, 0, 0.82);
+  color: rgba(0, 0, 0, 0.84);
   font-weight: 700;
 }
 
 .shift--no {
   background: var(--money-out);
   border-color: transparent;
-  color: rgba(0, 0, 0, 0.82);
+  color: rgba(0, 0, 0, 0.84);
   font-weight: 700;
 }
 
+/* Reserved whether or not it has a glyph — see note 1 above. */
 .shift__mark {
-  margin-left: 4px;
-  font-size: 0.86em;
-  /* The glyphs sit slightly high in most UI faces at this weight. */
+  width: 9px;
+  display: inline-block;
+  text-align: center;
+  font-size: 0.82em;
   line-height: 1;
-  vertical-align: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shift,
+  .shift:active {
+    transition-duration: 1ms;
+    transform: none;
+  }
 }
 
 /* ============================================================

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { IconAlert, IconArrowDown, IconArrowUp, IconX } from '../icons'
 import { useStore } from '../../lib/store'
@@ -32,7 +32,13 @@ export function Sheet({
   const closeRef = useRef(onClose)
   closeRef.current = onClose
 
-  useEffect(() => {
+  /* useLayoutEffect, not useEffect.
+     React 18 runs useEffect AFTER paint, so locking the body scroll here
+     invalidated the layout one frame after the sheet had already been
+     drawn — a second full-document layout pass immediately after the
+     first, landing mid-animation. Folding it into the same frame as the
+     first paint removes that entirely. */
+  useLayoutEffect(() => {
     if (!open) return
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'

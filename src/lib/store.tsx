@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { AppData } from './types'
+import type { AppData, AttendanceStatus } from './types'
 import { buildEmptyData } from './seed'
 import { reportIssue } from './telemetry'
 import {
@@ -20,6 +20,7 @@ import {
   deleteExpense as cloudDeleteExpense,
   logReminderSent as cloudLogReminderSent,
   markStaffDay as cloudMarkStaffDay,
+  markStaffDays as cloudMarkStaffDays,
   voidPaymentById as cloudVoidPayment,
   recordPayment as cloudRecordPayment,
   saveBatch as cloudSaveBatch,
@@ -174,6 +175,7 @@ interface Ctx {
   saveStaff: (a: { id?: string; name: string; role: string; phone?: string; active?: boolean }) => Promise<{ ok: boolean; message: string }>
   removeStaff: (id: string) => Promise<{ ok: boolean; message: string }>
   markStaffDay: (a: { coachId: string; date: string; am: boolean | null; pm: boolean | null }) => Promise<{ ok: boolean; message: string }>
+  markStaffDays: (rows: Array<{ coachId: string; date: string; am: boolean | null; pm: boolean | null }>) => Promise<{ ok: boolean; message: string }>
   /**
    * Create, edit, discontinue or bring back a student, in Postgres.
    *
@@ -216,6 +218,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   if (initial.current === null) initial.current = load()
 
   const [data, setData] = useState<AppData>(initial.current.data)
+  /* The current document, readable from a callback without making that
+     callback depend on `data` (which would rebuild every handler on
+     every keystroke). Used by the optimistic attendance write to snapshot
+     what to roll back to. */
+  const dataRef = useRef(data)
+  dataRef.current = data
   /* Signed in means "there is a session in memory", not "a flag says so".
      They used to be separate: the flag lived in sessionStorage and the
      session in localStorage, so they could disagree — and once the
@@ -444,10 +452,89 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [write],
   )
 
+  /**
+   * One attendance row, applied to the screen IMMEDIATELY.
+   *
+   * This is the only write in the app that does not go through write(),
+   * and the reason is latency the owner can feel. write() awaits the
+   * mutation and then awaits a full refetch of the tenant before anything
+   * on screen moves — at ~250ms a round trip that is half a second to a
+   * second of dead time after a tap on a button whose whole job is to
+   * turn green.
+   *
+   * It is safe to predict the result here in a way it is NOT safe for a
+   * fee: record_fee_payment rolls a renewal forward, writes a timeline
+   * entry and closes a reminder, so the client genuinely does not know
+   * what the row will look like afterwards. An attendance upsert changes
+   * exactly one row in one table, and this function already computes the
+   * same `present` the server stores — so the predicted state and the
+   * stored state cannot disagree.
+   *
+   * On failure the snapshot goes back and the message surfaces. There is
+   * no silent divergence: either the row is what the screen shows, or
+   * the screen is put back and the owner is told.
+   */
+  const applyAttendance = useCallback(
+    (rows: Array<{ coachId: string; date: string; am: boolean | null; pm: boolean | null }>) => {
+      setData((prev) => {
+        const touched = new Set(rows.map((r) => `${r.coachId}__${r.date}`))
+        const kept = prev.attendance.filter((r) => !touched.has(r.id))
+        const added = rows
+          // Both halves cleared means the row is deleted, not stored blank.
+          .filter((r) => !(r.am === null && r.pm === null))
+          .map((r) => ({
+            id: `${r.coachId}__${r.date}`,
+            staffId: r.coachId,
+            date: r.date,
+            status: (r.am === true || r.pm === true ? 'present' : 'absent') as AttendanceStatus,
+            am: r.am ?? undefined,
+            pm: r.pm ?? undefined,
+          }))
+        return { ...prev, attendance: [...kept, ...added] }
+      })
+    },
+    [],
+  )
+
   const markStaffDay = useCallback(
-    (a: { coachId: string; date: string; am: boolean | null; pm: boolean | null }) =>
-      write('mark attendance', () => cloudMarkStaffDay(a)),
-    [write],
+    async (a: { coachId: string; date: string; am: boolean | null; pm: boolean | null }) => {
+      if (!isSignedIn()) return { ok: false, message: 'Not signed in to the academy database.' }
+      const snapshot = dataRef.current
+      applyAttendance([a])
+      try {
+        await cloudMarkStaffDay(a)
+        return { ok: true, message: '' }
+      } catch (err) {
+        setData(snapshot)
+        reportIssue('mark attendance', err)
+        return {
+          ok: false,
+          message: err instanceof Error ? err.message : 'Could not save to the academy database.',
+        }
+      }
+    },
+    [applyAttendance],
+  )
+
+  /** The whole roster in one request, and one optimistic paint. */
+  const markStaffDays = useCallback(
+    async (rows: Array<{ coachId: string; date: string; am: boolean | null; pm: boolean | null }>) => {
+      if (!isSignedIn()) return { ok: false, message: 'Not signed in to the academy database.' }
+      const snapshot = dataRef.current
+      applyAttendance(rows)
+      try {
+        await cloudMarkStaffDays(rows)
+        return { ok: true, message: '' }
+      } catch (err) {
+        setData(snapshot)
+        reportIssue('mark attendance', err)
+        return {
+          ok: false,
+          message: err instanceof Error ? err.message : 'Could not save to the academy database.',
+        }
+      }
+    },
+    [applyAttendance],
   )
 
   const logReminderSent = useCallback(
@@ -635,7 +722,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       data, update,
       authed, login, enrol, enrolled: vault.isEnrolled(), logout, toasts, toast,
       loading, loadError, refresh, saveStudent,
-      saveBatch, removeBatch, recordFee, addRevenue, addExpense,
+      saveBatch, removeBatch, recordFee, addRevenue, addExpense, markStaffDays,
       saveStaff, removeStaff, markStaffDay, logReminderSent, removeEntry,
     }),
     [data, update,

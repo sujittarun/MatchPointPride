@@ -6,6 +6,7 @@ import {
   MAX_AMOUNT,
   currentMonthKey,
   dateLabelFull,
+  fmtDays,
   initials,
   isSunday,
   monthLabel,
@@ -56,7 +57,7 @@ function cycle(cur: Half): Half {
 const GLYPH: Record<'yes' | 'no', string> = { yes: '✓', no: '✕' }
 
 export default function Staff() {
-  const { data, toast, markStaffDay } = useStore()
+  const { data, toast, markStaffDay, markStaffDays } = useStore()
   const [month, setMonth] = useState(currentMonthKey())
   const [markDate, setMarkDate] = useState(todayISO())
   const [editing, setEditing] = useState<StaffT | 'new' | null>(null)
@@ -108,18 +109,19 @@ export default function Staff() {
     })
   }
 
+  /* ONE request, one repaint. This used to call markStaffDay per person,
+     and each of those refetched the entire tenant — eight staff meant
+     eight upserts and eight full reloads, about 144 requests for one
+     button press. */
   const markAllPresent = () => {
     void (async () => {
-      const active = data.staff.filter((x) => x.active)
-      const results = await Promise.all(
-        active.map((st) => markStaffDay({ coachId: st.id, date: markDate, am: true, pm: true })),
+      const roster = data.staff.filter((x) => x.active)
+      const r = await markStaffDays(
+        roster.map((st) => ({ coachId: st.id, date: markDate, am: true, pm: true })),
       )
-      const failed = results.filter((r) => !r.ok).length
-      if (failed) toast(`${failed} of ${active.length} could not be saved.`, 'bad')
+      if (!r.ok) toast(r.message, 'bad')
       else toast('Everyone marked present.')
     })()
-    return
-
   }
 
   return (
@@ -200,7 +202,11 @@ export default function Staff() {
                           }. Tap to change`}
                         >
                           {half.toUpperCase()}
-                          {st && <span className="shift__mark">{GLYPH[st]}</span>}
+                          {/* Always rendered, empty when unmarked: the
+                              slot is reserved in CSS so the pill never
+                              changes size and the row never reflows
+                              under the thumb. */}
+                          <span className="shift__mark">{st ? GLYPH[st] : ''}</span>
                         </button>
                       )
                     })}
@@ -316,7 +322,7 @@ function StaffCard({
 
           <div className="row gap-10" style={{ marginTop: 9 }}>
             <span className="t-mut">
-              <strong style={{ color: 'var(--ink-primary)' }}>{stats.present}</strong> present
+              <strong style={{ color: 'var(--ink-primary)' }}>{fmtDays(stats.worked)}</strong> worked
             </span>
             <span className="t-mut">
               <strong style={{ color: 'var(--ink-primary)' }}>{stats.absent}</strong> absent
@@ -333,8 +339,14 @@ function StaffCard({
           <div style={{ marginTop: 9 }}>
             <ShareBar
               parts={[
-                { label: 'Present', value: stats.present, color: ATT_COLOR.present },
-                { label: 'Absent', value: stats.absent, color: ATT_COLOR.absent },
+                /* Worked, not days-present. A month of mornings is 20
+                   present days and 10 days of work; splitting on
+                   `present` drew a full green bar for someone who
+                   worked half the month. The red side is everything
+                   marked that was not worked, so the bar always adds up
+                   to the days actually marked. */
+                { label: 'Worked', value: stats.worked, color: ATT_COLOR.present },
+                { label: 'Not worked', value: Math.max(0, stats.marked - stats.worked), color: ATT_COLOR.absent },
               ]}
               height={6}
             />

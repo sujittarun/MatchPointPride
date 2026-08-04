@@ -8,6 +8,16 @@ import { IconLock, IconTrophy, IconWhatsApp } from '../components/icons'
 import BrandMark from '../components/BrandMark'
 import { ACADEMY as A } from '../lib/academy'
 
+/* 146KB of JPEG became 48KB of WebP at the same 1200px, a 66% cut on the
+   single largest asset the owner downloads. It matters more than it
+   looks: the access token lives in sessionStorage and dies when the app
+   closes, so this hero is on the path of EVERY cold start, before the
+   PIN pad — not just a marketing page seen once.
+
+   The <picture> keeps the JPEG as a fallback rather than deleting it.
+   Every browser this app targets decodes WebP, but the fallback costs
+   nothing on the ones that do. */
+const COURT_WEBP = `${import.meta.env.BASE_URL}court.webp`
 const COURT = `${import.meta.env.BASE_URL}court.jpg`
 
 export default function Landing() {
@@ -31,12 +41,15 @@ export default function Landing() {
               casing: on React 18 that prop is unrecognised, so it is
               passed straight through to the DOM AND logged as an error on
               every render of the first screen the owner sees. */}
-          <img
-            src={COURT}
-            alt={`Indoor badminton courts at ${A.name}`}
-            {...{ fetchpriority: 'high' }}
-            decoding="async"
-          />
+          <picture>
+            <source srcSet={COURT_WEBP} type="image/webp" />
+            <img
+              src={COURT}
+              alt={`Indoor badminton courts at ${A.name}`}
+              {...{ fetchpriority: 'high' }}
+              decoding="async"
+            />
+          </picture>
         </div>
         <div className="hero__scrim" />
 

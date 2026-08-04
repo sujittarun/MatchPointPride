@@ -1034,6 +1034,33 @@ export async function deleteStaff(id: number): Promise<void> {
  * so this deletes rather than writing a row full of nulls. An absent
  * row and no row have always meant different things here.
  */
+/**
+ * Mark several people at once, in ONE request.
+ *
+ * "Mark all present" used to call markStaffDay per person, and every one
+ * of those went through the store's write() — which refetches the whole
+ * tenant. Eight staff meant eight upserts and eight full reloads,
+ * roughly 144 requests for one button press. PostgREST takes an array
+ * body with the merge-duplicates header requestUpsert already sets, so
+ * the whole roster is a single round trip.
+ */
+export async function markStaffDays(
+  rows: Array<{ coachId: string; date: string; am: boolean | null; pm: boolean | null }>,
+): Promise<void> {
+  const body = rows.map((a) => ({
+    tenant_id: TENANT,
+    date: a.date,
+    kind: 'staff',
+    person_id: String(a.coachId),
+    present: a.am === true || a.pm === true,
+    am: a.am,
+    pm: a.pm,
+  }))
+  if (!body.length) return
+  await requestUpsert('/attendance', body)
+  track('attendance_marked', { bulk: body.length })
+}
+
 export async function markStaffDay(a: {
   coachId: string
   date: string
@@ -1226,7 +1253,7 @@ export const read = {
   attendance: (sinceISO: string) =>
     select<AttendanceRow>(
       'attendance',
-      `select=date,kind,person_id,present,am,pm&date=gte.${sinceISO}&order=date.desc`,
+      `select=date,kind,person_id,present,am,pm&kind=eq.staff&date=gte.${sinceISO}&order=date.desc`,
     ),
   settings: () => rpc<TenantSettings>('tenant_settings', { p_tenant: TENANT }),
 }
@@ -1283,10 +1310,32 @@ export async function loadEverything(): Promise<{
      date in this file goes through it. */
   const sinceISO = toISO(since)
 
-  const [centres, batches, members, enrolments, coaches, payments, expenses, attendance, due, settings] =
+  /* ONE wave, not two.
+
+     batchFees needs only `centres` and `batches`, but it used to be
+     awaited AFTER the whole Promise.all — so every load and every write
+     paid a second full round-trip of latency waiting on payments and
+     reminder_queue, neither of which it looks at. Starting it as soon
+     as its own two inputs land lets it overlap the other eight.
+
+     It still resolves each fee through resolve_fee() in Postgres; the
+     seven-level chain has not moved, only the waiting. */
+  const centresP = read.centres()
+  const batchesP = read.batches()
+  const feesP = Promise.all([centresP, batchesP]).then(([c, b]) =>
+    batchFees(
+      c[0]?.id ?? 0,
+      // Only batches still in use. deleteBatch just sets active=false,
+      // so without this every batch ever retired costs one resolve_fee
+      // request on every load and every write, for ever.
+      b.filter((x) => x.active !== false).map((x) => ({ id: x.id, sport: x.sport })),
+    ),
+  )
+
+  const [centres, batches, members, enrolments, coaches, payments, expenses, attendance, due, settings, fees] =
     await Promise.all([
-      read.centres(),
-      read.batches(),
+      centresP,
+      batchesP,
       read.members(),
       read.enrollments(),
       read.coaches(),
@@ -1295,10 +1344,10 @@ export async function loadEverything(): Promise<{
       read.attendance(sinceISO),
       dueToday(),
       read.settings(),
+      feesP,
     ])
 
   const centreId = centres[0]?.id ?? 0
-  const fees = await batchFees(centreId, batches.map((b) => ({ id: b.id, sport: b.sport })))
 
   return {
     centreId,

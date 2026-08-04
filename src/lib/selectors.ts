@@ -255,7 +255,17 @@ export function staffMonthStats(
 export function staffTrend(data: AppData, staffId: string, n = 6) {
   return lastMonths(n).map((key) => {
     const s = staffMonthStats(data, staffId, key)
-    return { key, value: s.consistency, marked: s.marked, absent: s.absent }
+    /* `worked` is carried, not recomputed. staffMonthStats already
+       counts halves and this threw the answer away one line later,
+       which left every historical chart structurally blind to them. */
+    return {
+      key,
+      value: s.consistency,
+      marked: s.marked,
+      absent: s.absent,
+      worked: s.worked,
+      workingDays: s.workingDays,
+    }
   })
 }
 
@@ -264,13 +274,21 @@ export function staffLifetime(data: AppData, staffId: string) {
   const recs = data.attendance.filter((r) => r.staffId === staffId)
   let present = 0
   let absent = 0
+  let worked = 0
   for (const r of recs) {
-    if (r.status === 'present') present++
-    else if (r.status === 'absent') absent++
+    if (r.status === 'present') {
+      present++
+      /* Same rule as staffMonthStats: a present row with neither half
+         recorded is a FULL day, because that is all `present` ever meant
+         before shifts existed. Without this a career of half days would
+         report as a career of full ones. */
+      if (r.am === undefined && r.pm === undefined) worked += 1
+      else worked += (r.am ? 0.5 : 0) + (r.pm ? 0.5 : 0)
+    } else if (r.status === 'absent') absent++
   }
   const marked = present + absent
   return {
-    present, absent, marked,
+    present, absent, marked, worked,
     consistency: marked > 0 ? (present / marked) * 100 : 0,
   }
 }

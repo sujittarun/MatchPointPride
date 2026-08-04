@@ -38,6 +38,16 @@ export function hourRange(from: number, to: number): number[] {
   return out
 }
 
+/**
+ * A day count that may carry a half: 17.5, but 18 rather than 18.0.
+ *
+ * One formatter so a full month and a half month never print in two
+ * different shapes beside each other in the same list.
+ */
+export function fmtDays(n: number): string {
+  return n % 1 === 0 ? String(n) : n.toFixed(1)
+}
+
 export function pct(n: number, digits = 0): string {
   if (!isFinite(n)) return '—'
   return `${n.toFixed(digits)}%`

@@ -141,7 +141,7 @@ export function ConfirmPayment({
   reminder: Reminder | null
   onClose: () => void
 }) {
-  const { data, toast, recordFee, refresh } = useStore()
+  const { data, toast, recordFee } = useStore()
   const fileRef = useRef<HTMLInputElement | null>(null)
 
   /* Held in memory until the payment row exists, because the object is
@@ -222,7 +222,12 @@ export function ConfirmPayment({
     if (pending && res.paymentId) {
       try {
         await attachProof(res.paymentId, pending)
-        await refresh()
+        /* No second refresh. recordFee already refetched the tenant
+           (store.tsx), and attachProof changes exactly one column —
+           proof_path — on the row it just created. Reloading everything
+           again cost a second full round of requests with the sheet
+           still open, which is most of why confirming a payment with a
+           screenshot felt like it hung. */
       } catch (err) {
         reportIssue('attach proof', err)
         toast('Payment saved, but the screenshot did not upload.', 'bad')

@@ -5,6 +5,7 @@ import type { AttendanceStatus } from '../lib/types'
 import {
   currentMonthKey,
   dateLabelFull,
+  fmtDays,
   initials,
   inr,
   monthLabel,
@@ -167,10 +168,13 @@ export default function StaffDetail({ id }: { id: string }) {
         <div className="row gap-16" style={{ alignItems: 'center' }}>
           <Ring value={stats.consistency} size={96} stroke={10} label="Consistency" />
           <div className="grow col gap-8">
+            {/* Worked, not days-present: this is the screen the owner
+                opens before paying someone, and "2.5 of 3" is the
+                sentence he is looking for. */}
             <div className="row-between">
-              <span className="t-sub">Present</span>
+              <span className="t-sub">Worked</span>
               <span className="num" style={{ fontWeight: 640 }}>
-                {stats.present}
+                {fmtDays(stats.worked)} / {stats.marked}
               </span>
             </div>
             <div className="row-between">
@@ -190,8 +194,8 @@ export default function StaffDetail({ id }: { id: string }) {
         <div style={{ marginTop: 14 }}>
           <ShareBar
             parts={[
-              { label: 'Present', value: stats.present, color: ATT_COLOR.present },
-              { label: 'Absent', value: stats.absent, color: ATT_COLOR.absent },
+              { label: 'Worked', value: stats.worked, color: ATT_COLOR.present },
+              { label: 'Not worked', value: Math.max(0, stats.marked - stats.worked), color: ATT_COLOR.absent },
             ]}
           />
           <div className="t-mut" style={{ marginTop: 7 }}>
@@ -238,15 +242,28 @@ export default function StaffDetail({ id }: { id: string }) {
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card__head">
           <div>
-            <div className="card__title">Days absent</div>
-            <div className="card__sub">Last 6 months</div>
+            <div className="card__title">Days worked</div>
+            <div className="card__sub">Last 6 months · halves counted</div>
           </div>
         </div>
+        {/* This was "Days absent", which plotted the same fact as the
+            consistency chart above it — consistency is 100 × (1 −
+            absent/marked), so with `marked` near-constant month to month
+            one chart was an exact reflection of the other. A count and a
+            rate are genuinely different answers; a count and its own
+            complement are not. */}
         <BarChart
-          data={trend.map((t) => ({ label: monthShort(t.key), absent: t.absent }))}
-          series={[{ key: 'absent', label: 'Absent', color: ATT_COLOR.absent }]}
-          format={(n) => `${n} day${n === 1 ? '' : 's'}`}
-          valueLabels
+          data={trend.map((t) => ({
+            label: monthShort(t.key),
+            worked: t.worked,
+            absent: t.absent,
+          }))}
+          series={[
+            { key: 'worked', label: 'Worked', color: ATT_COLOR.present },
+            { key: 'absent', label: 'Absent', color: ATT_COLOR.absent },
+          ]}
+          format={(n) => `${fmtDays(n)} day${n === 1 ? '' : 's'}`}
+          empty="Nothing marked in these six months"
         />
       </div>
 
@@ -260,7 +277,7 @@ export default function StaffDetail({ id }: { id: string }) {
         <Stat
           label="Lifetime absences"
           value={String(lifetime.absent)}
-          foot={`${lifetime.present} days worked`}
+          foot={`${fmtDays(lifetime.worked)} days worked`}
           accent="var(--critical)"
         />
       </div>
