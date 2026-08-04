@@ -62,25 +62,25 @@ function makeBatches(): Batch[] {
   const all = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
   return [
     {
-      id: 'batch_k1', name: 'Kids Batch A', kind: 'kids', slot: '4:30 PM – 5:30 PM',
+      id: 'batch_k1', name: 'Batch A', kind: 'kids', slot: '4:30 PM – 5:30 PM',
       days: weekdays, fee: 2000, capacity: 12, colorSlot: 1, createdAt: now,
       upiId: 'matchpointkids@ybl', upiName: 'Match Point Pride',
       note: 'Beginners, ages 6–9.',
     },
     {
-      id: 'batch_k2', name: 'Kids Batch B', kind: 'kids', slot: '5:30 PM – 6:30 PM',
+      id: 'batch_k2', name: 'Batch B', kind: 'kids', slot: '5:30 PM – 6:30 PM',
       days: weekdays, fee: 2000, capacity: 12, colorSlot: 2, createdAt: now,
       upiId: 'matchpointkids@ybl', upiName: 'Match Point Pride',
       note: 'Intermediate, ages 9–12.',
     },
     {
-      id: 'batch_k3', name: 'Kids Batch C', kind: 'kids', slot: '6:30 PM – 7:30 PM',
+      id: 'batch_k3', name: 'Batch C', kind: 'kids', slot: '6:30 PM – 7:30 PM',
       days: weekdays, fee: 2200, capacity: 12, colorSlot: 3, createdAt: now,
       upiId: 'matchpointkids@ybl', upiName: 'Match Point Pride',
       note: 'Advanced juniors.',
     },
     {
-      id: 'batch_k4', name: 'Kids Batch D', kind: 'kids', slot: '6:30 AM – 7:30 AM',
+      id: 'batch_k4', name: 'Batch D', kind: 'kids', slot: '6:30 AM – 7:30 AM',
       days: all, fee: 2200, capacity: 12, colorSlot: 4, createdAt: now,
       upiId: 'matchpointkids@ybl', upiName: 'Match Point Pride',
       note: 'Morning batch.',

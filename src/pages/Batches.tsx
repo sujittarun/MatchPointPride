@@ -401,7 +401,7 @@ export function BatchSheet({
             className="input"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Kids Batch A"
+            placeholder="Batch A"
             autoComplete="off"
           />
         </Field>

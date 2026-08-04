@@ -265,6 +265,35 @@ export function unmarkedToday(data: AppData, date = todayISO()): number {
    ------------------------------------------------------------------ */
 
 /** The month a fee payment settles, as the server recorded it. */
+/**
+ * Which students owe a fee right now, according to the PLATFORM.
+ *
+ * `reminder_queue()` decides this, in Postgres, once per read; the
+ * reminders in `data` are its answer reshaped by mapping.ts. Every
+ * screen that shows a student's fee standing must ask THIS, not count
+ * transactions itself.
+ *
+ * BatchDetail used to do the latter — "is there a student_fee payment
+ * whose month is this month?" — and it disagreed with the Reminders
+ * screen for every student in the queue at once: six people were being
+ * chased under Reminders while the batch roster showed them a green
+ * "Paid" badge. Both screens were about the same six parents and the
+ * same money, and they said opposite things.
+ *
+ * The two rules differ because they measure different things. A payment
+ * carries the period it covers, and a period can START in this month
+ * while `renewal_on` says the next fee is already due — so a row that
+ * looks like "paid in August" sits beside an enrolment that is overdue
+ * in August. Only one of those is the question the owner is asking.
+ */
+export function studentsOwing(data: AppData): Set<string> {
+  const set = new Set<string>()
+  for (const r of data.reminders) {
+    if (r.kind === 'fee' && r.studentId && r.status !== 'paid') set.add(r.studentId)
+  }
+  return set
+}
+
 export function paidForMonth(t: Transaction): string {
   return t.forMonth ?? t.date.slice(0, 7)
 }

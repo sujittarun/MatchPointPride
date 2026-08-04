@@ -3,7 +3,7 @@ import { useStore } from '../lib/store'
 import { navigate } from '../lib/router'
 import type { Student } from '../lib/types'
 import { currentMonthKey, inr, initials, ordinal } from '../lib/format'
-import { activeStudentsOf, paidForMonth, unpaidMonthsFor } from '../lib/selectors'
+import { activeStudentsOf, studentsOwing, unpaidMonthsFor } from '../lib/selectors'
 import { ACADEMY } from '../lib/academy'
 import { Confirm, Empty, Stat } from '../components/ui'
 import { seriesColor } from '../components/charts'
@@ -36,15 +36,22 @@ export default function BatchDetail({ id }: { id: string }) {
   const roster = useMemo(() => (batch ? activeStudentsOf(data, batch.id) : []), [data, batch])
   const thisMonth = currentMonthKey()
 
-  const paidThisMonth = useMemo(() => {
-    const set = new Set<string>()
-    for (const t of data.transactions) {
-      if (t.source === 'student_fee' && t.studentId && paidForMonth(t) === thisMonth) {
-        set.add(t.studentId)
-      }
-    }
-    return set
-  }, [data.transactions, thisMonth])
+  /* Who owes, according to the PLATFORM — the same answer the Reminders
+     screen shows, because it is the same list.
+
+     This used to scan `transactions` for a student_fee payment whose
+     month matched this one, which is a second implementation of "has
+     this student paid?" living in a client. It disagreed with the
+     reminder queue for every student in it: six people were being
+     chased on the Reminders screen while this screen showed them a
+     green "Paid" badge, because a payment row existed whose period
+     happened to start this month while `renewal_on` said the next fee
+     was already due.
+
+     `reminder_queue()` decides who owes, in Postgres, once. Reading its
+     answer here means the two screens cannot drift apart again — and
+     the owner never sees one screen contradict the other about money. */
+  const owing = useMemo(() => studentsOwing(data), [data])
 
   if (!batch) {
     return (
@@ -63,8 +70,11 @@ export default function BatchDetail({ id }: { id: string }) {
   }
 
   const monthlyValue = roster.reduce((a, s) => a + s.monthlyFee, 0)
+  /* Counted from the same set as the badges. Summing a different rule
+     here is how a roster of green ticks sat above a "Collected" figure
+     that disagreed with it. */
   const collected = roster
-    .filter((s) => paidThisMonth.has(s.id))
+    .filter((s) => !owing.has(s.id))
     .reduce((a, s) => a + s.monthlyFee, 0)
   const color = seriesColor(batch.colorSlot)
 
@@ -201,7 +211,7 @@ export default function BatchDetail({ id }: { id: string }) {
       ) : (
         <div className="list">
           {roster.map((s) => {
-            const paid = paidThisMonth.has(s.id)
+            const owes = owing.has(s.id)
             return (
               <div className="listrow" key={s.id}>
                 <div
@@ -229,11 +239,7 @@ export default function BatchDetail({ id }: { id: string }) {
                   </div>
                 </button>
                 <div className="listrow__end">
-                  {paid ? (
-                    <span className="badge badge--good">
-                      <IconCheck size={11} /> Paid
-                    </span>
-                  ) : (
+                  {owes ? (
                     <button
                       className="btn btn--sm"
                       style={{ minHeight: 32, padding: '5px 10px', fontSize: '0.75rem' }}
@@ -241,6 +247,10 @@ export default function BatchDetail({ id }: { id: string }) {
                     >
                       Mark paid
                     </button>
+                  ) : (
+                    <span className="badge badge--good">
+                      <IconCheck size={11} /> Paid
+                    </span>
                   )}
                   <div className="row gap-2">
                     {s.phone && (

@@ -12,9 +12,8 @@ import {
   ordinal,
   todayISO,
 } from '../lib/format'
-import { IconAlert, IconCalendar } from './icons'
 import { findExisting } from '../lib/selectors'
-import { Field, Sheet } from './ui'
+import { Confirm, Field, Sheet } from './ui'
 
 /* Add / edit a student. Lives here rather than inside a page so it can
    be opened from the dashboard, the batch list or a batch itself. */
@@ -55,6 +54,10 @@ export function StudentSheet({
   const [joinedOn, setJoinedOn] = useState(todayISO())
   const [active, setActive] = useState(true)
   const [key, setKey] = useState('')
+  /* The confirm step in front of Add. `confirmedFee` latches once the
+     owner says go, so pressing Add again writes instead of re-asking. */
+  const [confirmingFee, setConfirmingFee] = useState(false)
+  const [confirmedFee, setConfirmedFee] = useState(false)
 
   const feeOf = (id: string) => data.batches.find((b) => b.id === id)?.fee
   const batchName = data.batches.find((b) => b.id === batch)?.name ?? 'the batch'
@@ -89,6 +92,8 @@ export function StudentSheet({
     // it is kept — it is the start of their first spell, not this one.
     setJoinedOn(rejoining ? todayISO() : (s?.joinedOn ?? todayISO()))
     setActive(rejoining ? true : (s?.active ?? true))
+    setConfirmingFee(false)
+    setConfirmedFee(false)
   }
 
   /* The lookup.
@@ -113,12 +118,11 @@ export function StudentSheet({
      defensible and the owner should simply know: a parent who signed up
      on Tuesday may hear from us a fortnight on.
 
-     The date is stated either way, and stated on open. Showing it only
-     after the owner edits a field would hide it in exactly the case it
-     is most likely to be wrong — the defaults, day 1 and today, which
-     are what most students are saved with and which land in the amber
-     band for a fortnight of every month. A line that is quiet when the
-     date is ordinary is not an alarm you learn to skip. */
+     Shown when Add is pressed, not while the form is being filled in.
+     A notice about a date the owner has not finished choosing is read by
+     nobody, and one that has been on screen since the sheet opened has
+     stopped being a notice at all. At the point of saving it is a
+     decision with two answers. */
   const firstFee = (isNew || rejoining) && joinedOn ? firstDueDate(clampDay(dueDay), joinedOn) : null
   const daysToFee = firstFee ? daysBetween(joinedOn, firstFee) : null
   const feeIsSoon = daysToFee !== null && daysToFee < FIRST_FEE_WARN_DAYS
@@ -132,6 +136,14 @@ export function StudentSheet({
     }
   }
 
+  /* Pressing Add validates, then STOPS to show when the first fee lands.
+
+     It used to be a banner sitting in the form the whole time, updating
+     as the owner typed. That is the wrong moment: nobody reads a notice
+     about a date they have not finished choosing, and by the time it is
+     true it has been on screen so long it is furniture. Asked at the
+     point of saving, it is a decision — go back and move the fee day, or
+     go ahead knowing when the parent will hear from us. */
   const save = async () => {
     const trimmed = name.trim()
     if (!trimmed) {
@@ -150,6 +162,17 @@ export function StudentSheet({
       toast('That fee looks too large — check the digits.', 'bad')
       return
     }
+    // Only for someone starting a spell — an edit is not choosing a
+    // first fee date, so there is nothing to confirm.
+    if ((isNew || rejoining) && firstFee && !confirmedFee) {
+      setConfirmingFee(true)
+      return
+    }
+    await write()
+  }
+
+  const write = async () => {
+    const trimmed = name.trim()
     const feeVal = nonNegative(fee)
     const day = clampDay(dueDay)
 
@@ -210,7 +233,7 @@ export function StudentSheet({
     onClose()
   }
 
-  return (
+  const sheet = (
     <Sheet
       open={value !== null}
       onClose={close}
@@ -290,35 +313,6 @@ export function StudentSheet({
         </div>
       )}
 
-      {firstFee && daysToFee !== null && (
-        <div
-          className="row gap-10"
-          style={{
-            padding: 12,
-            marginBottom: 14,
-            borderRadius: 'var(--r-md)',
-            background: feeIsSoon ? 'rgba(250,178,25,0.08)' : 'var(--surface-2)',
-            border: `1px solid ${feeIsSoon ? 'rgba(250,178,25,0.26)' : 'var(--line)'}`,
-            alignItems: 'flex-start',
-          }}
-        >
-          {feeIsSoon ? (
-            <IconAlert size={17} style={{ color: '#ffd166', flexShrink: 0, marginTop: 1 }} />
-          ) : (
-            <IconCalendar size={17} style={{ color: 'var(--ink-muted)', flexShrink: 0, marginTop: 1 }} />
-          )}
-          <div className="grow">
-            <div style={{ fontSize: '0.86rem', fontWeight: 600 }}>
-              First fee {dateLabelFull(firstFee)}
-            </div>
-            <p className="t-mut" style={{ lineHeight: 1.5, marginTop: 3 }}>
-              {daysToFee} day{daysToFee === 1 ? '' : 's'} after joining, and the first
-              reminder goes out then.
-              {feeIsSoon && ' Move the fee day if that is too soon after signing up.'}
-            </p>
-          </div>
-        </div>
-      )}
 
       <div className="form-grid">
         <Field label="Name" span>
@@ -488,5 +482,30 @@ export function StudentSheet({
         )}
       </div>
     </Sheet>
+  )
+
+  return (
+    <>
+      {sheet}
+      <Confirm
+        open={confirmingFee}
+        title={feeIsSoon ? 'That first fee is soon' : 'First fee'}
+        body={
+          firstFee && daysToFee !== null
+            ? `${name.trim() || 'This student'}'s first fee is ${dateLabelFull(firstFee)} — ` +
+              `${daysToFee} day${daysToFee === 1 ? '' : 's'} after joining, and the first ` +
+              `reminder goes out then.` +
+              (feeIsSoon ? ' Go back if you would rather move the fee day.' : '')
+            : ''
+        }
+        confirmLabel={rejoining ? 'Bring back' : 'Add student'}
+        onConfirm={() => {
+          setConfirmingFee(false)
+          setConfirmedFee(true)
+          void write()
+        }}
+        onCancel={() => setConfirmingFee(false)}
+      />
+    </>
   )
 }

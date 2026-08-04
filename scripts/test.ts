@@ -13,6 +13,7 @@ import {
   staffLifetime, staffMonthStats, workingDays, whatsappLink, tenureDays, wasEnrolledIn, studentProfile,
   monthsPhrase, paidForMonth, unpaidMonthsFor,
   findExisting, phoneKey, sameName, needsACall, blockedReminders, awaitingFirstPayment,
+  studentsOwing,
 } from '../src/lib/selectors'
 import { assemble, toStudents, toTransactions } from '../src/lib/mapping'
 import { needsNamedUpiApps, payLink, upiLink, upiQuery } from '../src/lib/upi'
@@ -225,6 +226,57 @@ ok('seed: all amounts positive', seed.transactions.every((t) => t.amount > 0))
   const cr = collectionRate(d, '2026-07')
   eq('voided payment does not count as collected', cr.collected, 0)
   eq('voided payment does not count as paid', cr.paid, 0)
+}
+
+/* ========= the batch roster and Reminders must agree =========
+   Both screens answer "does this student owe a fee?" about the same
+   parent and the same money. They used to answer it two different ways
+   — the roster counted transactions, Reminders read reminder_queue —
+   and disagreed for every student in the queue at once. ========== */
+{
+  const d: AppData = JSON.parse(JSON.stringify(buildEmptyData()))
+  const b = d.batches[0]
+  const month = currentMonthKey()
+  d.students.push(
+    { id: 'owes', name: 'Owes Money', batchId: b.id, phone: '1', joinedOn: '2026-01-01',
+      monthlyFee: 2000, feeDueDay: 4, active: true },
+    { id: 'clear', name: 'All Clear', batchId: b.id, phone: '2', joinedOn: '2026-01-01',
+      monthlyFee: 2000, feeDueDay: 4, active: true },
+  )
+
+  /* The exact shape that broke it: a payment whose period STARTS this
+     month, so the old rule called it "paid", while the platform still
+     has them in the queue because renewal_on says the fee is due. Both
+     rows are true at once — they answer different questions. */
+  d.transactions.push({
+    id: 'pay_1', type: 'revenue', date: `${month}-04`, forMonth: month, amount: 2000,
+    category: 'Coaching', source: 'student_fee', studentId: 'owes', createdAt: '',
+  } as never)
+  d.reminders.push({
+    id: 'rq_1', studentId: 'owes', kind: 'fee', title: '', message: '',
+    dueDate: `${month}-04`, amount: 2000, months: [month], status: 'pending',
+  } as never)
+
+  const owing = studentsOwing(d)
+  ok('roster: a chased student owes, despite a payment dated this month', owing.has('owes'))
+  ok('roster: a student not in the queue does not owe', !owing.has('clear'))
+
+  // The old rule, kept here as the thing that must NOT come back.
+  const oldRule = new Set(
+    d.transactions.filter((t) => t.source === 'student_fee' && t.studentId &&
+      paidForMonth(t) === month).map((t) => t.studentId as string),
+  )
+  ok('...and the old transaction-counting rule disagreed with the queue',
+     oldRule.has('owes') && owing.has('owes'))
+
+  // A settled reminder is not a debt.
+  d.reminders[0] = { ...d.reminders[0], status: 'paid' } as never
+  ok('roster: a paid reminder clears the student', !studentsOwing(d).has('owes'))
+
+  // Blocked past +15 is still owed — the ladder stopped, the money did not.
+  d.reminders[0] = { ...d.reminders[0], status: 'cancelled',
+                     blockedReason: 'overdue_15_days' } as never
+  ok('roster: past +15 the debt still shows', studentsOwing(d).has('owes'))
 }
 
 /* ================= collectionRate semantics ================= */
