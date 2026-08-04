@@ -1083,6 +1083,214 @@ ul {
 }
 
 /* ============================================================
+   Money breakdown — see Breakdown.tsx for why it is shaped this way.
+
+   ROW_MIN_H is the load-bearing number. Every drill and every selection
+   happens in one of these rows, because an arc cannot be a touch target
+   when the data decides how wide it is. 52px clears the 44px rule with
+   room for a fat thumb, and it is a MIN — a long category name grows the
+   row rather than being clipped out of reach.
+   ============================================================ */
+.bd {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.bd__crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  align-self: flex-start;
+  margin-bottom: 10px;
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  /* min-height reserves the line so the ring does not jump 24px up the
+     screen the moment you come back out of a drill. */
+  min-height: 30px;
+}
+
+.bd__crumb-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bd__sep {
+  opacity: 0.6;
+}
+
+.bd__crumb {
+  background: transparent;
+  border: 0;
+  color: var(--ink-muted);
+  font: inherit;
+  cursor: pointer;
+  /* A breadcrumb is a real way back, so it gets a real target rather
+     than 11px of underlined text. */
+  padding: 6px 8px;
+  margin: -6px -2px;
+  min-height: 30px;
+  border-radius: 7px;
+}
+
+.bd__crumb:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink-primary);
+}
+
+.bd__crumbs b {
+  color: var(--ink-primary);
+  font-weight: 620;
+  padding: 0 2px;
+}
+
+.bd__chart {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.bd__seg {
+  cursor: pointer;
+  transition:
+    stroke-width 240ms var(--ease-out),
+    transform 280ms var(--ease-out);
+}
+
+/* The hub is the largest control on the screen and the one a thumb
+   lands on without aiming. Centred by transform rather than by grid so
+   its size can follow the ring's inner radius. */
+.bd__hub {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 4px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.bd__hub:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.bd__hub-label {
+  font-size: 0.63rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 660;
+  color: var(--ink-muted);
+  /* One line, ellipsised. The hub is a circle: a second line of a long
+     category name would push the value out of the hole and print it on
+     the ring, which is the one thing this component must never do. */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bd__hub-value {
+  font-size: 1.24rem;
+  font-weight: 680;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.bd__hub-hint {
+  font-size: 0.62rem;
+  color: var(--ink-muted);
+}
+
+.bd__rows {
+  width: 100%;
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.bd__row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 130ms var(--ease-out);
+}
+
+.bd__row:hover,
+.bd__row.is-sel {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.bd__sw {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* The only element allowed to absorb the slack, so the amount can never
+   be pushed off the right edge by a long name. */
+.bd__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.87rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bd__pct {
+  flex-shrink: 0;
+  width: 34px;
+  text-align: right;
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bd__amt {
+  flex-shrink: 0;
+  font-size: 0.87rem;
+  font-weight: 630;
+  font-variant-numeric: tabular-nums;
+}
+
+.bd__chev {
+  flex-shrink: 0;
+  width: 9px;
+  color: var(--ink-muted);
+  font-size: 0.85rem;
+}
+
+.bd__empty {
+  color: var(--ink-muted);
+  font-size: 0.85rem;
+  padding: 26px 0;
+  text-align: center;
+}
+
+/* ============================================================
    Net, month by month, under the In-vs-out bars.
 
    The 4px side padding is not decorative: BarChart lays its plot out

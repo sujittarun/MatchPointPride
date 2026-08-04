@@ -53,6 +53,30 @@
   --money-in: #199e70;
   --money-out: #e66767;
 
+  /* Ramps for the money breakdown, walked outward from --money-in and
+     --money-out. A drill-down has to say "these came out of THAT", and
+     colour is the only thing carrying it — reusing --series-1..6 for the
+     children restarts at blue and makes the second level look like a
+     different chart parked next to the first.
+
+     Literal hex, not color-mix(): that lands in Android WebView 111 and
+     the APK has no floor that high. */
+  /* Ordered STRONGEST FIRST, because slices are drawn biggest first. The
+     other way round hands the palest tint to the 63% slice and the
+     densest to a 2% sliver, which reads as though the small one matters
+     most. */
+  --in-1: #199e70;
+  --in-2: #24b483;
+  --in-3: #4ecfa0;
+  --in-4: #7fdcbc;
+  --in-5: #a9e8d3;
+
+  --out-1: #e66767;
+  --out-2: #ec8585;
+  --out-3: #f2a3a3;
+  --out-4: #f6bfbf;
+  --out-5: #f9d6d6;
+
   /* --- shape --------------------------------------------------- */
   --r-sm: 8px;
   --r-md: 12px;

@@ -22,12 +22,14 @@ import {
   collectionRate,
   expenseByCategory,
   moneyByMonth,
+  moneyTree,
   monthTotals,
   revenueBySource,
   unpaidMonthsFor,
 } from '../lib/selectors'
 import { Confirm, Empty, Field, Sheet, Stat } from '../components/ui'
-import { BarChart, Donut, HBarChart, Legend, seriesColor } from '../components/charts'
+import { BarChart, Legend } from '../components/charts'
+import { Breakdown } from '../components/charts/Breakdown'
 import {
   IconArrowDown,
   IconArrowUp,
@@ -65,14 +67,7 @@ export default function Finance() {
   )
   const collection = useMemo(() => collectionRate(data, month), [data, month])
 
-  const bySource = useMemo(
-    () => revenueBySource(data.transactions, month),
-    [data.transactions, month],
-  )
-  const byCategory = useMemo(
-    () => expenseByCategory(data.transactions, month),
-    [data.transactions, month],
-  )
+  const tree = useMemo(() => moneyTree(data.transactions, month), [data.transactions, month])
 
   /* Who paid, and for what. Both come off the row already: `studentId`
      from payments.member_id, `feeKind` from payments.kind. */
@@ -281,37 +276,28 @@ export default function Finance() {
         />
       </div>
 
-      {bySource.length > 0 && (
-        <div className="card" style={{ marginBottom: 14 }}>
-          <div className="card__head">
-            <div>
-              <div className="card__title">Where revenue came from</div>
-              <div className="card__sub">{monthLabel(month)}</div>
-            </div>
-          </div>
-          <Donut
-            data={bySource}
-            format={(n) => inr(n)}
-            centerValue={inr(totals.revenue, { compact: true })}
-            centerLabel="Revenue"
-          />
-        </div>
-      )}
+      {/* One card where there were two.
 
-      {byCategory.length > 0 && (
-        <div className="card" style={{ marginBottom: 14 }}>
-          <div className="card__head">
-            <div>
-              <div className="card__title">Where the money went</div>
-              <div className="card__sub">{monthLabel(month)} · {byCategory.length} categories</div>
-            </div>
+          "Where revenue came from" (a donut of four sources) and "Where
+          the money went" (a bar chart of expense categories) answered
+          halves of one question and could not be compared, because
+          neither ever showed the other side. This shows both, and opens:
+          Revenue splits into new admissions, renewals, court bookings
+          and memberships; Expense into its categories; and a long tail
+          folds into a group you can open again.
+
+          The joining-vs-renewal split is `payments.kind`, recorded by
+          record_fee_payment when the money was taken — not guessed here
+          from how new the student is. */}
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="card__head">
+          <div>
+            <div className="card__title">Where the money went</div>
+            <div className="card__sub">{monthLabel(month)} · tap a group to open it</div>
           </div>
-          <HBarChart
-            data={byCategory.map((c, i) => ({ ...c, color: seriesColor(i + 1) }))}
-            format={(n) => inr(n, { compact: true })}
-          />
         </div>
-      )}
+        <Breakdown data={tree} format={(n) => inr(n)} />
+      </div>
 
       {/* ---------- ledger ---------- */}
       <div className="section__head" style={{ marginTop: 22 }}>

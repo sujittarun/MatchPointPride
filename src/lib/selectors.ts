@@ -112,6 +112,55 @@ export function expenseByCategory(txns: Transaction[], monthKey?: string) {
     .sort((a, b) => b.value - a.value)
 }
 
+/**
+ * The month's money as a two-level tree: revenue and expense, each split
+ * into where it actually came from or went.
+ *
+ * GROUPING, NOT DECIDING. Every amount here was computed by Postgres and
+ * is only being added up by label. In particular "new admission" vs
+ * "renewal" is not inferred from dates or from whether a student is new:
+ * it is `payments.kind`, written by record_fee_payment at the moment the
+ * money was taken, and carried through mapping.ts as `feeKind`. Deriving
+ * it here instead would be a second opinion about money, which is the
+ * one thing this app does not do.
+ *
+ * `feeKind` is optional on the type and older rows predate it, so an
+ * absent kind falls to Renewal — the ordinary case, and the one that
+ * does not invent an admission that never happened.
+ */
+export function moneyTree(txns: Transaction[], monthKey: string) {
+  const rev = new Map<string, number>()
+  const exp = new Map<string, number>()
+
+  for (const t of txns) {
+    if (!t.date.startsWith(monthKey)) continue
+    if (t.type === 'expense') {
+      exp.set(t.category, (exp.get(t.category) ?? 0) + t.amount)
+      continue
+    }
+    const label =
+      t.source === 'court_booking' ? 'Court bookings'
+      : t.source === 'membership' ? 'Memberships'
+      : t.source === 'student_fee'
+        ? t.feeKind === 'admission' ? 'New admissions'
+          : t.feeKind === 'custom' ? 'One-off charges'
+          : 'Renewals'
+        : 'Other'
+    rev.set(label, (rev.get(label) ?? 0) + t.amount)
+  }
+
+  const toSlices = (m: Map<string, number>) =>
+    [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)
+
+  return {
+    label: 'All money',
+    children: [
+      { label: 'Revenue', children: toSlices(rev) },
+      { label: 'Expense', children: toSlices(exp) },
+    ],
+  }
+}
+
 /** Share of active students whose fee landed in the given month. */
 export function collectionRate(data: AppData, monthKey: string) {
   const active = data.students.filter((s) => s.active)
