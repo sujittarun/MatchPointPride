@@ -38,7 +38,7 @@ let sent = 0
 /** Suppresses the identical message repeating within a session. */
 const seen = new Set<string>()
 
-function sessionId(): string | null {
+export function sessionId(): string | null {
   try {
     let id = sessionStorage.getItem('mpp-sid')
     if (!id) {
@@ -58,7 +58,7 @@ function sessionId(): string | null {
    it with esbuild and has no WebView, no window and no bridge. The
    global is set by the native bridge before the bundle runs, and by
    @capacitor/core itself when the app imports it. */
-const platform: string = (() => {
+export const platform: string = (() => {
   try {
     const cap = (globalThis as { Capacitor?: { getPlatform?: () => string } }).Capacitor
     return cap?.getPlatform?.() ?? 'web'
@@ -75,9 +75,25 @@ function viewport(): string {
   }
 }
 
-function device(): string {
+/**
+ * The device, as one short string for the activity feed.
+ *
+ * ANDROID IS TESTED FIRST, and reordering the alternation would not have
+ * been enough. An Android user agent reads
+ *
+ *   Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 …
+ *
+ * and JavaScript alternation matches at the leftmost POSITION in the
+ * string, not the leftmost alternative — so `(…|Android|…|Linux)` still
+ * matched "Linux", because "Linux" occurs earlier in the text. Android
+ * was already ahead of Linux in that pattern and every phone still
+ * reported as Linux. It needs its own test, not a different order.
+ */
+export function device(): string {
   try {
-    const m = navigator.userAgent.match(/(iPhone|iPad|Android|Macintosh|Windows|CrOS|Linux)[^;)]*/)
+    const ua = navigator.userAgent
+    if (/Android/.test(ua)) return (ua.match(/Android[^;)]*/) ?? ['Android'])[0]
+    const m = ua.match(/(iPhone|iPad|Macintosh|Windows|CrOS|Linux)[^;)]*/)
     return m ? m[0] : '?'
   } catch {
     return '?'

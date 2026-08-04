@@ -1353,6 +1353,36 @@ function report(): void {
 }
 
 /* ------------------------------------------------------------------
+   device(): an Android phone must not report as Linux
+   ------------------------------------------------------------------ */
+{
+  const ANDROID = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36'
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15'
+  const MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+  const LINUX = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
+
+  /* The shipped rule, restated. Reordering the old alternation would NOT
+     have fixed this: an Android UA reads "(Linux; Android 13; …)" and JS
+     alternation matches the leftmost POSITION, not the leftmost
+     alternative — Android was already listed before Linux and every
+     phone still came back "Linux". */
+  const dev = (ua: string) => {
+    if (/Android/.test(ua)) return (ua.match(/Android[^;)]*/) ?? ['Android'])[0]
+    const m = ua.match(/(iPhone|iPad|Macintosh|Windows|CrOS|Linux)[^;)]*/)
+    return m ? m[0] : '?'
+  }
+
+  eq('device: Android is not reported as Linux', dev(ANDROID), 'Android 13')
+  eq('device: iPhone still detected', dev(IPHONE), 'iPhone')
+  eq('device: Macintosh still detected', dev(MAC), 'Macintosh')
+  eq('device: real desktop Linux is still Linux', dev(LINUX), 'Linux x86_64')
+
+  // The old pattern, kept as the thing that must stay broken-for-a-reason.
+  const old = /(iPhone|iPad|Android|Macintosh|Windows|CrOS|Linux)[^;)]*/
+  eq('device: the old pattern did report Android as Linux', ANDROID.match(old)![0], 'Linux')
+}
+
+/* ------------------------------------------------------------------
    Court booking: the hour list, and the read that has to fetch it
    ------------------------------------------------------------------ */
 {

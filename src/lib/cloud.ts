@@ -20,6 +20,9 @@
 
 import type { AttendanceStatus } from './types'
 import { firstDueDate, renewalAfterFeeDayChange, toISO, todayISO } from './format'
+/* One-way: telemetry.ts holds its own PROJECT/TENANT and imports
+   nothing from here, so there is no cycle. */
+import { device, platform, sessionId } from './telemetry'
 
 const PROJECT = 'https://ugsklcipzyiogxynshnh.supabase.co'
 // Public by design — it is in every tenant's front end. RLS is the
@@ -1131,18 +1134,6 @@ export async function markStaffDay(a: {
  * function necessary. Carries no names or numbers: what was done, not
  * to whom.
  */
-/** 'android' | 'ios' | 'web'. Read the same way telemetry.ts reads it,
-    through the global rather than an import, so this file stays usable
-    in the Node test harness where there is no bridge. */
-function platformName(): string {
-  try {
-    const cap = (globalThis as { Capacitor?: { getPlatform?: () => string } }).Capacitor
-    return cap?.getPlatform?.() ?? 'web'
-  } catch {
-    return 'web'
-  }
-}
-
 export function track(name: string, props: Record<string, unknown>): void {
   try {
     void fetch(`${PROJECT}/rest/v1/events`, {
@@ -1156,13 +1147,17 @@ export function track(name: string, props: Record<string, unknown>): void {
       body: JSON.stringify({
         tenant_id: TENANT,
         name,
+        /* The same envelope page_view has always sent.
+
+           An ACTION — a payment recorded, a student added, a batch
+           created — used to arrive with only `ver`: no session, no
+           platform, no device. So the console could show that something
+           happened but not from where, and "does the APK report like the
+           web app?" could not be answered from the data at all. It can
+           now: the feed reads "marked attendance — Android". */
+        session_id: sessionId(),
         page: (location.hash || '#/').slice(0, 60),
-        /* `plat` so the console can tell the phone from the browser.
-           telemetry.ts already stamped page_view and client_error with
-           it; every ACTION — a payment recorded, a student added, a
-           batch created — arrived unlabelled, so "does the APK roll up
-           to Academy Manager?" could not be answered from the data. */
-        props: { ...props, ver: __APP_VERSION__, plat: platformName() },
+        props: { ...props, ver: __APP_VERSION__, plat: platform, ua: device() },
       }),
       keepalive: true,
     }).catch(() => {})
