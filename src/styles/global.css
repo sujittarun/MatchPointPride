@@ -1082,6 +1082,66 @@ ul {
   stroke-linejoin: round;
 }
 
+/* ============================================================
+   Net, month by month, under the In-vs-out bars.
+
+   The 4px side padding is not decorative: BarChart lays its plot out
+   with padL = padR = 4 and divides the remainder into equal month
+   groups, so a 6-column grid inside the same padding puts every net
+   figure exactly under the pair of bars it is the difference of. That
+   alignment is the whole reason these need no month labels of their
+   own — the chart's axis labels are directly above them. If the chart's
+   padding ever changes, change this with it.
+   ============================================================ */
+.netrow {
+  margin-top: 2px;
+}
+
+.netrow__cells {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  padding: 0 4px;
+  /* No gap. A gap would divide (width - 8 - gaps) instead of (width - 8),
+     which is not how BarChart divides its plot — 2px of gap put the edge
+     months ~0.8px off their bars. Separation comes from the cell's own
+     padding instead, which does not move the centres. */
+  gap: 0;
+}
+
+.netrow__cell {
+  background: transparent;
+  border: 0;
+  padding: 5px 0 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.netrow__cell:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.netrow__v {
+  font-size: 0.72rem;
+  font-weight: 640;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.netrow__v.is-pos { color: var(--money-in); }
+.netrow__v.is-neg { color: var(--money-out); }
+
+.netrow__cap {
+  margin-top: 6px;
+  text-align: center;
+  font-size: 0.68rem;
+  color: var(--ink-muted);
+}
+
 .chart__legend {
   display: flex;
   flex-wrap: wrap;

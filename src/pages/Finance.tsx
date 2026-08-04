@@ -27,7 +27,7 @@ import {
   unpaidMonthsFor,
 } from '../lib/selectors'
 import { Confirm, Empty, Field, Sheet, Stat } from '../components/ui'
-import { BarChart, Donut, HBarChart, TrendChart, seriesColor } from '../components/charts'
+import { BarChart, Donut, HBarChart, Legend, seriesColor } from '../components/charts'
 import {
   IconArrowDown,
   IconArrowUp,
@@ -231,21 +231,53 @@ export default function Finance() {
           ]}
           format={(n) => inr(n)}
           onSelect={(_label, i) => setBreakdown(series[i].key)}
+          /* The legend is rendered below the net row instead, so nothing
+             sits between the columns and the figures derived from them. */
+          showLegend={false}
         />
-      </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
-        <div className="card__head">
-          <div>
-            <div className="card__title">Net trend</div>
-            <div className="card__sub">Revenue minus expenses, last 6 months</div>
+        {/* Net, as a figure per month, directly under the two bars it is
+            the difference of.
+
+            This replaces a second full "Net trend" card that plotted the
+            same six numbers as a line. Two charts of one dataset make the
+            reader do the subtraction twice — once by eye against the bars,
+            once against a line on a different scale — and neither ever
+            says what the number IS. A figure does, in a fraction of the
+            height.
+
+            The cells are a 6-column grid inside the same 4px side padding
+            the chart uses for its plot area, so each net sits exactly under
+            the month it belongs to and needs no label of its own; the
+            chart's own axis labels are directly above. Tapping one opens
+            the same month breakdown the bars do. */}
+        <div className="netrow">
+          <div className="netrow__cells">
+            {series.map((m) => (
+              <button
+                key={m.key}
+                className="netrow__cell"
+                onClick={() => setBreakdown(m.key)}
+                aria-label={`${monthLabel(m.key)} net ${m.net < 0 ? 'minus ' : ''}${inr(Math.abs(m.net))}`}
+              >
+                <span
+                  className={`netrow__v${m.net < 0 ? ' is-neg' : m.net > 0 ? ' is-pos' : ''}`}
+                >
+                  {m.net === 0
+                    ? '—'
+                    : (m.net < 0 ? '−' : '+') + inr(Math.abs(m.net), { compact: true })}
+                </span>
+              </button>
+            ))}
           </div>
+          <div className="netrow__cap">Net each month · tap for the split</div>
         </div>
-        <TrendChart
-          data={series.map((m) => ({ label: monthShort(m.key), value: m.net }))}
-          format={(n) => (n < 0 ? `−${inr(Math.abs(n))}` : inr(n))}
-          color="var(--brand)"
-          allowNegative
+
+        <Legend
+          items={[
+            { label: 'Revenue', color: 'var(--money-in)' },
+            { label: 'Expenses', color: 'var(--money-out)' },
+          ]}
         />
       </div>
 

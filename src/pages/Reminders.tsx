@@ -19,7 +19,7 @@ import {
   studentById,
   whatsappLink,
 } from '../lib/selectors'
-import { Empty, Field, Sheet, Stat } from '../components/ui'
+import { Empty, Sheet, Stat } from '../components/ui'
 import { ACADEMY } from '../lib/academy'
 import { ConfirmPayment, ProofImage } from '../components/ConfirmPayment'
 import { BarChart } from '../components/charts'
@@ -29,7 +29,6 @@ import {
   IconCheck,
   IconClock,
   IconPhone,
-  IconPlus,
   IconWhatsApp,
   IconX,
 } from '../components/icons'
@@ -54,7 +53,6 @@ export default function Reminders() {
   const { data } = useStore()
   const [filter, setFilter] = useState<Filter>('due')
   const [open, setOpen] = useState<Reminder | null>(null)
-  const [creating, setCreating] = useState(false)
 
   const stats = useMemo(() => reminderStats(data), [data])
   const activity = useMemo(() => reminderActivity(data, 6), [data])
@@ -114,42 +112,10 @@ export default function Reminders() {
         />
       </div>
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card__head">
-          <div>
-            <div className="card__title">Reminder tracking</div>
-            <div className="card__sub">Sent vs. paid, last 6 months</div>
-          </div>
-        </div>
-        {/* Always drawn, even when every month is zero — the grid, the
-            axis and all six months stay put, and `empty` puts one quiet
-            line in the middle of the space. It used to swap the chart
-            for a two-sentence paragraph, which read as a card that had
-            failed to load: the heading promises six months of a chart
-            and prose turned up instead. */}
-        <BarChart
-          data={activity.map((a) => ({ label: monthShort(a.key), sent: a.sent, paid: a.paid }))}
-          series={[
-            { key: 'sent', label: 'Sent', color: 'var(--series-1)' },
-            { key: 'paid', label: 'Paid after reminder', color: 'var(--series-3)' },
-          ]}
-          format={(n) => `${n}`}
-          empty="No reminders sent yet"
-        />
-      </div>
-
       <p className="t-mut" style={{ marginBottom: 12, lineHeight: 1.5 }}>
         This list keeps itself up to date from the payment record. Nothing is sent
         automatically — you send each one.
       </p>
-
-      <button
-        className="btn btn--block"
-        style={{ marginBottom: 14 }}
-        onClick={() => setCreating(true)}
-      >
-        <IconPlus size={17} /> One-off reminder
-      </button>
 
       <div className="chiprow" style={{ marginBottom: 14 }}>
         {(
@@ -189,8 +155,38 @@ export default function Reminders() {
         </div>
       )}
 
+      {/* The six-month history sits BELOW the list.
+
+          It is background, not a task. Above the list it was the first
+          thing on the screen after the stat tiles, pushing the actual
+          job — who to chase today — under the fold on a phone. The list
+          is what the owner opened this tab to do; the chart is what he
+          looks at afterwards. */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card__head">
+          <div>
+            <div className="card__title">Reminder tracking</div>
+            <div className="card__sub">Sent vs. paid, last 6 months</div>
+          </div>
+        </div>
+        {/* Always drawn, even when every month is zero — the grid, the
+            axis and all six months stay put, and `empty` puts one quiet
+            line in the middle of the space. It used to swap the chart
+            for a two-sentence paragraph, which read as a card that had
+            failed to load: the heading promises six months of a chart
+            and prose turned up instead. */}
+        <BarChart
+          data={activity.map((a) => ({ label: monthShort(a.key), sent: a.sent, paid: a.paid }))}
+          series={[
+            { key: 'sent', label: 'Sent', color: 'var(--series-1)' },
+            { key: 'paid', label: 'Paid after reminder', color: 'var(--series-3)' },
+          ]}
+          format={(n) => `${n}`}
+          empty="No reminders sent yet"
+        />
+      </div>
+
       <ReminderDetail reminder={open} onClose={() => setOpen(null)} />
-      <NewReminderSheet open={creating} onClose={() => setCreating(false)} />
     </main>
   )
 }
@@ -502,106 +498,3 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
   )
 }
 
-/* ------------------------------------------------------------------
-   New one-off reminder
-   ------------------------------------------------------------------ */
-
-function NewReminderSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { data, toast } = useStore()
-  const active = data.students.filter((s) => s.active)
-  const [studentId, setStudentId] = useState('')
-  const [title, setTitle] = useState('')
-  const [amount, setAmount] = useState('')
-  const [due, setDue] = useState(todayISO())
-  const [message, setMessage] = useState('')
-
-  const chosen = studentById(data, studentId || active[0]?.id)
-
-  const save = () => {
-    const sid = studentId || active[0]?.id
-    if (!sid) {
-      toast('Add a student first.', 'bad')
-      return
-    }
-    /* Custom reminders have nowhere to live: reminder_queue answers only
-       for fees, from enrolments and payments. One written here would
-       exist on this phone until the next refresh and then be gone — the
-       exact silent loss this rewrite removed everywhere else. Honest to
-       say so rather than accept it and drop it later. */
-    toast('One-off reminders need a place in the database first.', 'bad')
-    onClose()
-  }
-
-  return (
-    <Sheet
-      open={open}
-      onClose={onClose}
-      title="New reminder"
-      subtitle="One-off — fee, renewal or anything else"
-      footer={
-        <>
-          <button className="btn" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn btn--primary" onClick={save}>
-            Create
-          </button>
-        </>
-      }
-    >
-      <div className="form-grid">
-        <Field label="Student" span>
-          <select
-            className="select"
-            value={studentId || active[0]?.id || ''}
-            onChange={(e) => setStudentId(e.target.value)}
-          >
-            {active.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="What for" span>
-          <input
-            className="input"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Tournament fee"
-            autoComplete="off"
-          />
-        </Field>
-
-        <Field label="Amount (₹)" hint="Optional.">
-          <input
-            className="input"
-            type="number"
-            inputMode="numeric"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder={chosen ? String(chosen.monthlyFee) : '0'}
-          />
-        </Field>
-
-        <Field label="Due date">
-          <input className="input" type="date" value={due} onChange={(e) => setDue(e.target.value)} />
-        </Field>
-
-        <Field
-          label="Custom message"
-          hint="Leave blank to use the standard fee message. Placeholders: {student} {guardian} {amount} {due} {batch} {academy} {owner}"
-          span
-        >
-          <textarea
-            className="textarea"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Hi {guardian}, …"
-          />
-        </Field>
-      </div>
-    </Sheet>
-  )
-}
