@@ -208,12 +208,41 @@ export function Breakdown({
 
   const R = size / 2
   const MAIN_W = 30
-  const mainR = R - MAIN_W / 2 - 3
+  /** Extra stroke a selected slice gains. */
+  const SEL_GROW = 4
+  /** How far a selected slice slides outward, along its own mid-angle. */
+  const POP = 4
+
+  /* The radius has to be paid for by the SELECTED state, not the resting
+     one. An SVG clips at its viewBox, and a slice that has both grown by
+     SEL_GROW and slid out by POP reaches
+     mainR + (MAIN_W + SEL_GROW) / 2 + POP — so sizing the ring to the
+     resting stroke put the tapped slice's outer edge past the edge of
+     the box, and it came back with a flat shaved side. It only showed on
+     the slice you touched, which is the worst place for it.
+
+     Everything below is derived from this one line, so the ring cannot
+     be made to overflow by changing a stroke and forgetting the rest. */
+  const mainR = R - (MAIN_W + SEL_GROW) / 2 - POP - 1
   const mainCirc = 2 * Math.PI * mainR
 
   const back = () => {
     setPath((p) => p.slice(0, -1))
     setSel(null)
+  }
+
+  /* Tapping a slice and tapping its row are the same gesture on the same
+     thing, so they do the same thing: open it if it opens, otherwise
+     select it. They disagreed at first — the arc always selected while
+     the row drilled — which meant tapping "Expense" on the ring lit it up
+     and tapping "Expense" in the list went inside it. */
+  const activate = (i: number) => {
+    const s = slices[i]
+    if (!s) return
+    if (s.children?.length) {
+      setPath((p) => [...p, s.label])
+      setSel(null)
+    } else setSel((cur) => (cur === i ? null : i))
   }
 
   const hubLabel = chosen ? chosen.label : drilled ? node.label : 'All money'
@@ -261,18 +290,25 @@ export function Breakdown({
                     const from = acc
                     acc += frac
                     const on = sel === i
-                    const { dash, offset, cap } = arcDash(from, frac, mainCirc, MAIN_W)
+                    /* The ACTUAL width, not the resting one: arcDash
+                       subtracts a round cap's overhang from the arc, and
+                       a selected slice is drawing SEL_GROW wider — using
+                       the resting figure left the gap to its neighbour
+                       shrinking every time it was tapped. */
+                    const { dash, offset, cap } = arcDash(
+                      from, frac, mainCirc, on ? MAIN_W + SEL_GROW : MAIN_W,
+                    )
                     const mid = (from + frac / 2) * 2 * Math.PI
-                    const pop = on ? 4 : 0
+                    const pop = on ? POP : 0
                     return (
                       <circle
                         key={s.label + i}
                         className="bd__seg"
                         cx={R} cy={R} r={mainR} fill="none"
-                        stroke={s.color} strokeWidth={on ? MAIN_W + 4 : MAIN_W}
+                        stroke={s.color} strokeWidth={on ? MAIN_W + SEL_GROW : MAIN_W}
                         strokeLinecap={cap} strokeDasharray={dash} strokeDashoffset={offset}
                         transform={`translate(${Math.cos(mid) * pop} ${Math.sin(mid) * pop})`}
-                        onClick={() => setSel(on ? null : i)}
+                        onClick={() => activate(i)}
                       />
                     )
                   })
@@ -314,12 +350,7 @@ export function Breakdown({
                   key={s.label + i}
                   type="button"
                   className={`bd__row${sel === i ? ' is-sel' : ''}`}
-                  onClick={() => {
-                    if (deeper) {
-                      setPath((p) => [...p, s.label])
-                      setSel(null)
-                    } else setSel(sel === i ? null : i)
-                  }}
+                  onClick={() => activate(i)}
                   aria-label={`${s.label}, ${format(s.amount)}, ${Math.round((s.amount / total) * 100)} percent${deeper ? '. Tap to open' : ''}`}
                 >
                   <span className="bd__sw" style={{ background: s.color }} />
