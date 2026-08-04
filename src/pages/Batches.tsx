@@ -320,6 +320,7 @@ export function BatchSheet({
   const [fee, setFee] = useState('')
   const [capacity, setCapacity] = useState('')
   const [note, setNote] = useState('')
+  const [upi, setUpi] = useState('')
   const [key, setKey] = useState('')
 
 
@@ -334,6 +335,7 @@ export function BatchSheet({
     setFee(b ? String(b.fee) : '')
     setCapacity(b?.capacity ? String(b.capacity) : '')
     setNote(b?.note ?? '')
+    setUpi(b?.upiId ?? '')
   }
 
   const save = async () => {
@@ -348,6 +350,15 @@ export function BatchSheet({
     }
     if (nonNegative(fee) > MAX_AMOUNT) {
       toast('That fee looks too large — check the digits.', 'bad')
+      return
+    }
+    /* Caught here as well as server-side, only so the owner is told
+       before the sheet closes. set_collection_account applies the same
+       rule and is the one that actually decides — a mistyped UPI id does
+       not bounce, it sends a parent's money nowhere. */
+    const upiTrimmed = upi.trim()
+    if (upiTrimmed && !/^[a-zA-Z0-9._%+-]{2,64}@[a-zA-Z][a-zA-Z0-9.-]{1,32}$/.test(upiTrimmed)) {
+      toast('That does not look like a UPI id. It should read like name@bank.', 'bad')
       return
     }
     /* The fee is not a column on the batch — it is a fee_rules row that
@@ -366,6 +377,10 @@ export function BatchSheet({
       endTime: slotEnd,
       capacity: nonNegativeOrUndef(capacity) ?? null,
       fee: nonNegative(fee),
+      // Blank clears it, and resolve_upi falls back to the academy's own
+      // account — which is why this is sent even when empty.
+      upiId: upiTrimmed || null,
+      upiName: null,
     })
     if (!r.ok) {
       toast(r.message, 'bad')
@@ -476,6 +491,30 @@ export function BatchSheet({
             app's to PATCH — so the fields are removed rather than left
             looking like they work. The academy's single UPI is already
             configured platform-side and reaches the message. */}
+
+        {/* Where THIS batch's fees are collected.
+
+            It is not decoration: reminder_queue and the payment link
+            both ask resolve_upi(), which reads batches.upi_id first and
+            falls back to the centre and then the academy. So a batch
+            with its own id here collects to it, and every reminder sent
+            to a student in that batch carries that account. */}
+        <Field
+          label="Collect fees to"
+          hint="Optional. Leave blank to use the academy's own UPI id."
+          span
+        >
+          <input
+            className="input"
+            value={upi}
+            onChange={(e) => setUpi(e.target.value)}
+            placeholder="name@bank"
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            inputMode="email"
+          />
+        </Field>
 
         <Field label="Note" span>
           <textarea

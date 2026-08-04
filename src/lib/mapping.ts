@@ -63,13 +63,18 @@ function batchKind(b: BatchRow): Batch['kind'] {
   return 'kids'
 }
 
+/* The UPI comes off the BATCH ROW, not from tenants.config.
+   `config.billing.upiByBatch` was a second, parallel answer to "where
+   does this batch's money go" — and it was the wrong one: resolve_upi()
+   reads batches.upi_id, so the screen could show one account while the
+   payment link carried another. Same class of fault as the money rules
+   this app already moved into Postgres: two places answering one
+   question. There is now one. */
 export function toBatches(
   rows: BatchRow[],
   fees: Record<number, number | null>,
-  upi: Record<string, { upi: string; payee: string }>,
 ): Batch[] {
   return rows.map((b, i) => {
-    const u = upi[b.code]
     return {
       id: String(b.id),
       name: b.name,
@@ -80,8 +85,8 @@ export function toBatches(
       feePending: fees[b.id] == null,
       capacity: b.capacity ?? undefined,
       colorSlot: (i % 6) + 1,
-      upiId: u?.upi,
-      upiName: u?.payee,
+      upiId: b.upi_id ?? undefined,
+      upiName: b.upi_name ?? undefined,
       createdAt: new Date().toISOString(),
     }
   })
@@ -298,7 +303,6 @@ export function toAttendance(rows: AttendanceRow[]): AttendanceRecord[] {
 export function assemble(a: {
   batches: BatchRow[]
   fees: Record<number, number | null>
-  upi: Record<string, { upi: string; payee: string }>
   members: MemberRow[]
   enrolments: EnrollmentRow[]
   coaches: CoachRow[]
@@ -307,7 +311,7 @@ export function assemble(a: {
   attendance: AttendanceRow[]
   due: DueRow[]
 }): AppData {
-  const batches = toBatches(a.batches, a.fees, a.upi)
+  const batches = toBatches(a.batches, a.fees)
   const students = toStudents(a.members, a.enrolments, a.fees)
   return {
     version: 2,

@@ -771,6 +771,10 @@ export async function saveBatch(a: {
   capacity?: number | null
   fee: number
   active?: boolean
+  /** Collect this batch's fees to a different account. Blank = the
+      academy's own, which is what resolve_upi falls back to. */
+  upiId?: string | null
+  upiName?: string | null
 }): Promise<number> {
   const body = {
     tenant_id: TENANT,
@@ -804,6 +808,26 @@ export async function saveBatch(a: {
     `/fee_rules?tenant_id=eq.${TENANT}&batch_id=eq.${batchId}&active=is.true`,
     { active: false, effective_to: todayISO() },
   ).catch(() => {})
+
+  /* The collection account goes through set_collection_account, not a
+     PATCH on the row.
+
+     It is a SECURITY DEFINER function that asserts staff for this tenant,
+     validates the id against is_valid_upi (name@bank), refuses a batch
+     belonging to another academy, and returns what resolve_upi will now
+     answer. Writing batches.upi_id directly from here would skip all
+     four — and the format check is the one that matters, because a
+     mistyped UPI id does not fail, it silently sends a parent's money
+     nowhere. */
+  if (a.upiId !== undefined) {
+    await rpc('set_collection_account', {
+      p_tenant: TENANT,
+      p_kind: 'batch',
+      p_id: batchId,
+      p_upi: a.upiId || null,
+      p_name: a.upiName || null,
+    })
+  }
 
   await request('POST', '/fee_rules', {
     tenant_id: TENANT,
@@ -1107,6 +1131,18 @@ export async function markStaffDay(a: {
  * function necessary. Carries no names or numbers: what was done, not
  * to whom.
  */
+/** 'android' | 'ios' | 'web'. Read the same way telemetry.ts reads it,
+    through the global rather than an import, so this file stays usable
+    in the Node test harness where there is no bridge. */
+function platformName(): string {
+  try {
+    const cap = (globalThis as { Capacitor?: { getPlatform?: () => string } }).Capacitor
+    return cap?.getPlatform?.() ?? 'web'
+  } catch {
+    return 'web'
+  }
+}
+
 export function track(name: string, props: Record<string, unknown>): void {
   try {
     void fetch(`${PROJECT}/rest/v1/events`, {
@@ -1121,7 +1157,12 @@ export function track(name: string, props: Record<string, unknown>): void {
         tenant_id: TENANT,
         name,
         page: (location.hash || '#/').slice(0, 60),
-        props: { ...props, ver: __APP_VERSION__ },
+        /* `plat` so the console can tell the phone from the browser.
+           telemetry.ts already stamped page_view and client_error with
+           it; every ACTION — a payment recorded, a student added, a
+           batch created — arrived unlabelled, so "does the APK roll up
+           to Academy Manager?" could not be answered from the data. */
+        props: { ...props, ver: __APP_VERSION__, plat: platformName() },
       }),
       keepalive: true,
     }).catch(() => {})
@@ -1147,6 +1188,11 @@ export type BatchRow = {
   end_time: string | null
   capacity: number | null
   active: boolean
+  /* Where this batch's fees are collected. resolve_upi() reads THESE
+     columns — batch, then centre, then the tenant's account — so this is
+     the only source that agrees with where the money actually goes. */
+  upi_id: string | null
+  upi_name: string | null
 }
 export type MemberRow = {
   id: number
@@ -1227,7 +1273,7 @@ export const read = {
   batches: () =>
     select<BatchRow>(
       'batches',
-      'select=id,centre_id,code,name,sport,days,start_time,end_time,capacity,active&order=sort',
+      'select=id,centre_id,code,name,sport,days,start_time,end_time,capacity,active,upi_id,upi_name&order=sort',
     ),
   members: () =>
     select<MemberRow>(
@@ -1291,7 +1337,6 @@ export async function loadEverything(): Promise<{
   centreId: number
   batches: BatchRow[]
   fees: Record<number, number | null>
-  upi: Record<string, { upi: string; payee: string }>
   members: MemberRow[]
   enrolments: EnrollmentRow[]
   coaches: CoachRow[]
@@ -1332,7 +1377,15 @@ export async function loadEverything(): Promise<{
     ),
   )
 
-  const [centres, batches, members, enrolments, coaches, payments, expenses, attendance, due, settings, fees] =
+  /* tenant_settings is no longer read on load.
+
+     Its only consumer was config.billing.upiByBatch, a second answer to
+     "where does this batch's money go" that resolve_upi never consulted
+     — it reads batches.upi_id. With the batch row as the single source,
+     this RPC had nothing left to supply, so it is one fewer request on
+     every load. read.settings() stays defined for a caller that needs
+     the brand or WhatsApp config later; nothing pays for it now. */
+  const [centres, batches, members, enrolments, coaches, payments, expenses, attendance, due, fees] =
     await Promise.all([
       centresP,
       batchesP,
@@ -1343,7 +1396,6 @@ export async function loadEverything(): Promise<{
       read.expenses(sinceISO),
       read.attendance(sinceISO),
       dueToday(),
-      read.settings(),
       feesP,
     ])
 
@@ -1353,7 +1405,6 @@ export async function loadEverything(): Promise<{
     centreId,
     batches,
     fees,
-    upi: settings?.billing?.upiByBatch ?? {},
     members,
     enrolments,
     coaches,

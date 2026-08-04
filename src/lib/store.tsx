@@ -165,7 +165,7 @@ interface Ctx {
   loading: boolean
   /** Non-null when the last read failed; the pages show stale data with a banner. */
   loadError: string | null
-  saveBatch: (a: { id?: string; name: string; days: number[]; startTime: string; endTime: string; capacity?: number | null; fee: number }) => Promise<{ ok: boolean; message: string }>
+  saveBatch: (a: { id?: string; name: string; days: number[]; startTime: string; endTime: string; capacity?: number | null; fee: number; upiId?: string | null; upiName?: string | null }) => Promise<{ ok: boolean; message: string }>
   removeBatch: (id: string) => Promise<{ ok: boolean; message: string }>
   recordFee: (a: { enrollmentId: number; amount: number; onDate?: string; mode?: string; note?: string }) => Promise<{ ok: boolean; message: string; paymentId?: number }>
   addRevenue: (a: { label: string; amount: number; onDate: string; kind: 'Court' | 'Partner' | 'Membership' | 'Coaching'; detail?: string; note?: string }) => Promise<{ ok: boolean; message: string }>
@@ -393,7 +393,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   )
 
   const saveBatch = useCallback(
-    (a: { id?: string; name: string; days: number[]; startTime: string; endTime: string; capacity?: number | null; fee: number }) =>
+    (a: { id?: string; name: string; days: number[]; startTime: string; endTime: string; capacity?: number | null; fee: number; upiId?: string | null; upiName?: string | null }) =>
       write('save batch', () =>
         cloudSaveBatch({ ...a, id: a.id ? Number(a.id) : undefined, centreId: centreId.current }),
       ),
