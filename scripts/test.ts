@@ -413,6 +413,37 @@ ok('seed: all amounts positive', seed.transactions.every((t) => t.amount > 0))
   try { omsg = renderReminderMessage(d, orphan) } catch { threw = true }
   ok('message: orphan reminder does not throw', !threw)
   ok('message: orphan has no leftover placeholders', !threw && !/\{[a-z]+\}/.test(omsg), omsg)
+
+  /* The batch's own collection account has to reach the parent.
+
+     This is the point of asking for a UPI id when a batch is created:
+     resolve_upi() answers batch -> centre -> academy, and whatever the
+     batch says is what every reminder for a student in that batch must
+     carry. Verified server-side too (set_collection_account writes
+     batches.upi_id and resolve_upi returns source='batch'); this pins
+     the half that runs on the phone. */
+  const own: AppData = JSON.parse(JSON.stringify(d))
+  own.batches[0].upiId = 'coachramesh@okicici'
+  own.batches[0].upiName = 'Ramesh Coaching'
+  const ownMsg = renderReminderMessage(own, rem)
+  ok('batch upi: the link carries THIS batch account',
+     ownMsg.includes('coachramesh%40okicici') || ownMsg.includes('coachramesh@okicici'), ownMsg)
+  ok('batch upi: not the academy default',
+     !ownMsg.includes('7732077327'), ownMsg)
+  ok('batch upi: a pay line appears at all', ownMsg.includes('#/pay'), ownMsg)
+  ok('batch upi: still no leftover placeholders', !/\{[a-z]+\}/.test(ownMsg), ownMsg)
+
+  /* And with no batch account the message must not carry a broken half
+     link — the pay line is dropped entirely rather than pointing at
+     nothing. Built explicitly rather than assuming the fixture has no
+     account: buildEmptyData's batches DO carry one, which is what made
+     the first version of this assertion pass for the wrong reason. */
+  const bare: AppData = JSON.parse(JSON.stringify(d))
+  delete (bare.batches[0] as { upiId?: string }).upiId
+  delete (bare.batches[0] as { upiName?: string }).upiName
+  const bareMsg = renderReminderMessage(bare, rem)
+  ok('batch upi: no account means no pay line', !bareMsg.includes('#/pay'), bareMsg)
+  ok('batch upi: and no dangling placeholder', !/\{[a-z]+\}/.test(bareMsg), bareMsg)
 }
 
 /* ================= aggregation ================= */
