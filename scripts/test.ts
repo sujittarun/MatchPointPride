@@ -18,6 +18,7 @@ import {
 } from '../src/lib/selectors'
 import { assemble, toStudents, toTransactions } from '../src/lib/mapping'
 import { needsNamedUpiApps, payLink, upiLink, upiQuery } from '../src/lib/upi'
+import { pageKey } from '../src/lib/telemetry'
 import type { BatchRow, EnrollmentRow, MemberRow } from '../src/lib/cloud'
 import { buildEmptyData, buildSeedData } from '../src/lib/seed'
 import * as vault from '../src/lib/vault'
@@ -1380,6 +1381,31 @@ function report(): void {
   // The old pattern, kept as the thing that must stay broken-for-a-reason.
   const old = /(iPhone|iPad|Android|Macintosh|Windows|CrOS|Linux)[^;)]*/
   eq('device: the old pattern did report Android as Linux', ANDROID.match(old)![0], 'Linux')
+}
+
+{
+  /* Telemetry must not carry a student's name.
+
+     `events` accepts inserts from the anon key, which is public and
+     committed in this repo — so it is the one table written with a
+     credential anybody can hold, and PLATFORM.md allows that precisely
+     because it carries counts and nothing personal. The fee reminder
+     links a parent to #/pay?a=2200&n=<student name>, and `page` was
+     storing the first 60 characters of the hash, which reaches the
+     name. Real rows like that exist in mpp. */
+  eq('pageKey: keeps a plain route', pageKey('#/finance'), '#/finance')
+  eq('pageKey: keeps an id, which is meaningless outside the tenant',
+     pageKey('#/student/804'), '#/student/804')
+  eq('pageKey: drops the pay link\'s query string',
+     pageKey('#/pay?a=2200&n=Aadhya%20Raju&u=7732077327@ybl'), '#/pay')
+  eq('pageKey: drops a + -encoded name too',
+     pageKey('#/pay?a=2200&n=Aadhya+Raju'), '#/pay')
+  eq('pageKey: empty hash is the root', pageKey(''), '#/')
+  eq('pageKey: undefined is the root', pageKey(undefined), '#/')
+  ok('pageKey: never carries a name',
+     !pageKey('#/pay?n=Aadhya%20Raju').toLowerCase().includes('aadhya'))
+  ok('pageKey: never carries a UPI id',
+     !pageKey('#/pay?u=7732077327@ybl').includes('@'))
 }
 
 /* ------------------------------------------------------------------

@@ -114,6 +114,34 @@ export type ErrorReport = {
   kind?: 'crash' | 'operation'
 }
 
+/**
+ * Which SCREEN this happened on — the route, never the query string.
+ *
+ * `location.hash` is not safe to record whole. The fee reminder links a
+ * parent to `#/pay?a=2200&n=Aadhya%20Raju&u=7732077327@ybl`, so the
+ * hash carries a student's NAME and the academy's UPI id, and this
+ * column was storing the first 60 characters of it — which is exactly
+ * long enough to reach the name. Rows like that are already in the
+ * table for mpp.
+ *
+ * That matters more here than it looks. `events` takes inserts from the
+ * anon key by design, so it is the one table on the platform written
+ * with a credential that is public — which is precisely why PLATFORM.md
+ * says it carries "counts only, never a name or a phone number". A
+ * student's name in it breaks the reason the table is allowed to be
+ * open at all.
+ *
+ * Cutting at '?' keeps everything the console actually uses: which
+ * screen, how often. `#/student/804` still carries an id, which is
+ * meaningless outside the tenant and is what makes the activity feed
+ * clickable.
+ */
+export function pageKey(hash: string | undefined): string {
+  const h = hash || '#/'
+  const q = h.indexOf('?')
+  return (q === -1 ? h : h.slice(0, q)).slice(0, 60)
+}
+
 /** One POST to the platform's event sink. Never awaited, never throws. */
 function post(name: string, props: Record<string, unknown>): void {
   try {
@@ -122,7 +150,7 @@ function post(name: string, props: Record<string, unknown>): void {
       name,
       session_id: sessionId(),
       // hash routing, so the route is the meaningful part
-      page: (location.hash || '#/').slice(0, 60),
+      page: pageKey(location.hash),
       props,
     })
     void fetch(`${PROJECT}/rest/v1/events`, {

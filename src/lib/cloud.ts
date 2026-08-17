@@ -22,7 +22,7 @@ import type { AttendanceStatus } from './types'
 import { firstDueDate, renewalAfterFeeDayChange, toISO, todayISO } from './format'
 /* One-way: telemetry.ts holds its own PROJECT/TENANT and imports
    nothing from here, so there is no cycle. */
-import { device, platform, sessionId } from './telemetry'
+import { device, platform, sessionId, pageKey } from './telemetry'
 
 const PROJECT = 'https://ugsklcipzyiogxynshnh.supabase.co'
 // Public by design — it is in every tenant's front end. RLS is the
@@ -1156,7 +1156,7 @@ export function track(name: string, props: Record<string, unknown>): void {
            web app?" could not be answered from the data at all. It can
            now: the feed reads "marked attendance — Android". */
         session_id: sessionId(),
-        page: (location.hash || '#/').slice(0, 60),
+        page: pageKey(location.hash),
         props: { ...props, ver: __APP_VERSION__, plat: platform, ua: device() },
       }),
       keepalive: true,
