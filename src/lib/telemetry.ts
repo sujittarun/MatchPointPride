@@ -38,6 +38,27 @@ let sent = 0
 /** Suppresses the identical message repeating within a session. */
 const seen = new Set<string>()
 
+/** Who, as opposed to which tab.
+ *
+ * sessionId() dies with the tab, so the same person opening the app
+ * tomorrow reads as somebody new — which makes a visit count useless as a
+ * measure of reach. This one lives in localStorage instead. It identifies
+ * a BROWSER: no name, no phone, nothing derived from the account, and it
+ * goes when the user clears site data.
+ */
+export function visitorId(): string | null {
+  try {
+    let id = localStorage.getItem('mpp-vid')
+    if (!id) {
+      id = 'v_' + Math.random().toString(36).slice(2) + Date.now().toString(36)
+      localStorage.setItem('mpp-vid', id)
+    }
+    return id
+  } catch {
+    return null // private mode, or storage disabled
+  }
+}
+
 export function sessionId(): string | null {
   try {
     let id = sessionStorage.getItem('mpp-sid')
@@ -151,7 +172,7 @@ function post(name: string, props: Record<string, unknown>): void {
       session_id: sessionId(),
       // hash routing, so the route is the meaningful part
       page: pageKey(location.hash),
-      props,
+      props: { vid: visitorId(), ...props },
     })
     void fetch(`${PROJECT}/rest/v1/events`, {
       method: 'POST',
