@@ -443,6 +443,26 @@ ok('seed: all amounts positive', seed.transactions.every((t) => t.amount > 0))
   delete (bare.batches[0] as { upiName?: string }).upiName
   const bareMsg = renderReminderMessage(bare, rem)
   ok('batch upi: no account means no pay line', !bareMsg.includes('#/pay'), bareMsg)
+
+  /* The screenshot ask is the ONLY confirmation this app can ever get.
+
+     A hand-sent WhatsApp message has nothing listening on the other
+     side, and a UPI link moves money between two banks without telling
+     us. So the request has to be in the first message, has to be bold,
+     and has to survive the case where there is no pay link at all —
+     someone paying by bank transfer still needs to be confirmable. */
+  ok('confirm ask: present in the default message',
+     ownMsg.toLowerCase().includes('screenshot'), ownMsg)
+  ok('confirm ask: bold, so it is not skimmed past',
+     /\*[^*]*screenshot[^*]*\*/i.test(ownMsg), ownMsg)
+  ok('confirm ask: says why it matters',
+     ownMsg.toLowerCase().includes('reminders keep coming'), ownMsg)
+  ok('confirm ask: survives a batch with no pay link',
+     bareMsg.toLowerCase().includes('screenshot'), bareMsg)
+  ok('confirm ask: sits above the sign-off',
+     ownMsg.indexOf('screenshot') < ownMsg.indexOf('Already paid'), ownMsg)
+  ok('confirm ask: appears once, not twice',
+     (ownMsg.toLowerCase().match(/screenshot/g) ?? []).length === 1, ownMsg)
   ok('batch upi: and no dangling placeholder', !/\{[a-z]+\}/.test(bareMsg), bareMsg)
 }
 

@@ -130,8 +130,30 @@ export const ACADEMY = {
    */
   reminderPayLine: 'Pay here 👇\n{paylink}',
 
+  /**
+   * The ask that makes a hand-sent reminder work at all.
+   *
+   * Nothing tells this app when a parent pays. The link opens their UPI
+   * app and the money moves between two banks; no webhook comes back,
+   * and a message sent by hand from a personal WhatsApp has nothing
+   * listening on the other side. The screenshot IS the confirmation —
+   * it is what the owner opens ConfirmPayment with, and until it
+   * arrives the ladder keeps counting.
+   *
+   * So it is bold, it is its own paragraph above the sign-off rather
+   * than the last line of it, and it says WHY: a parent who knows the
+   * reminders stop when the screenshot lands has a reason to send one.
+   * It appears whether or not there is a pay link — someone who paid by
+   * bank transfer still has to be confirmable.
+   *
+   * `*…*` is WhatsApp bold. The amount already uses it; two bold spans
+   * in a short message is the most emphasis this copy should ever carry.
+   */
+  reminderConfirmLine:
+    '*Please send a payment screenshot here once done* 📸\n' +
+    'That is how I confirm it — reminders keep coming until I do.',
+
   /** Always last. */
   reminderSignoff:
-    'Send a screenshot once it is done and I will mark it off ✅\n' +
     'Already paid? Please ignore this 🙏\n\n— {owner}\n{academy}',
 } as const

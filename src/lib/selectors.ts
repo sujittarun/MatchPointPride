@@ -754,6 +754,10 @@ export function renderReminderMessage(
   } else {
     const parts = [ACADEMY.reminderTemplate]
     if (batch?.upiId) parts.push(ACADEMY.reminderPayLine)
+    /* Unconditional, unlike the pay line. A batch with no UPI still
+       needs the parent to prove they paid some other way — that is the
+       only signal this app ever gets. */
+    parts.push(ACADEMY.reminderConfirmLine)
     parts.push(ACADEMY.reminderSignoff)
     template = parts.join('\n\n')
   }
