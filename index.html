@@ -9,6 +9,44 @@
       name="description"
       content="Match Point Pride Badminton Academy, Hyderabad. Coaching, batches and membership led by Venu."
     />
+    <!-- Link preview, for the one URL this app ever sends anybody: the
+         fee reminder's payment link.
+
+         WhatsApp strips the fragment before fetching, so the crawler
+         asks for the site root and gets THIS file whatever `#/pay?a=…`
+         said. The card is therefore the same on every reminder and can
+         never show a student or an amount — which is the right outcome
+         anyway. A preview card is public: it renders in the chat list,
+         on a lock screen, and to anyone the parent forwards it to.
+         Nothing here may be specific to a family.
+
+         Absolute URLs, not relative: the crawler has no page context to
+         resolve `./` against.
+
+         court.jpg, not court.webp — the app serves WebP to browsers, but
+         preview crawlers are inconsistent about it and a card that
+         silently loses its image is worse than 146KB the crawler
+         fetches once and caches. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Match Point Pride" />
+    <meta property="og:title" content="Match Point Pride — Fee payment" />
+    <meta
+      property="og:description"
+      content="Pay your academy fee by UPI. Opens your payment app with the amount ready."
+    />
+    <meta property="og:url" content="https://sujittarun.github.io/MatchPointPride/" />
+    <meta property="og:image" content="https://sujittarun.github.io/MatchPointPride/court.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="900" />
+    <meta property="og:image:alt" content="Indoor badminton courts at Match Point Pride" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Match Point Pride — Fee payment" />
+    <meta
+      name="twitter:description"
+      content="Pay your academy fee by UPI. Opens your payment app with the amount ready."
+    />
+    <meta name="twitter:image" content="https://sujittarun.github.io/MatchPointPride/court.jpg" />
+
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%23C8FF4D'/%3E%3Cpath d='M9.5 12.9 6.9 4.9A1.1 1.1 0 0 1 7.95 3.4h8.1A1.1 1.1 0 0 1 17.1 4.9l-2.6 8Z' fill='%230B1004'/%3E%3Ccircle cx='12' cy='17.6' r='3.5' fill='%230B1004'/%3E%3C/svg%3E" />
       <link rel="manifest" href="./manifest.webmanifest" />
     <!-- Without these, a home-screen icon on iOS is a plain Safari

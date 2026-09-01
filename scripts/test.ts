@@ -19,6 +19,7 @@ import {
 import { assemble, toStudents, toTransactions } from '../src/lib/mapping'
 import { needsNamedUpiApps, payLink, upiLink, upiQuery } from '../src/lib/upi'
 import { pageKey } from '../src/lib/telemetry'
+import { ACADEMY } from '../src/lib/academy'
 import type { BatchRow, EnrollmentRow, MemberRow } from '../src/lib/cloud'
 import { buildEmptyData, buildSeedData } from '../src/lib/seed'
 import * as vault from '../src/lib/vault'
@@ -1486,6 +1487,50 @@ function report(): void {
      !pageKey('#/pay?n=Aadhya%20Raju').toLowerCase().includes('aadhya'))
   ok('pageKey: never carries a UPI id',
      !pageKey('#/pay?u=7732077327@ybl').includes('@'))
+}
+
+{
+  /* The link preview card.
+
+     WhatsApp strips the fragment and fetches the site root, so this card
+     is what every fee reminder shows — and it renders in the chat list,
+     on a lock screen, and to anyone the parent forwards the message to.
+     Two things therefore have to hold: the URLs must be absolute,
+     because a crawler has no page to resolve `./` against, and nothing
+     in the card may be specific to a family. */
+  const html = readFileSync('index.html', 'utf8')
+  const meta = (prop: string) => {
+    const m = html.match(
+      new RegExp(`<meta\\s+(?:property|name)="${prop}"[\\s\\S]*?content="([^"]*)"`, 'i'),
+    )
+    return m ? m[1] : null
+  }
+
+  ok('preview: has a title', !!meta('og:title'))
+  ok('preview: has a description', !!meta('og:description'))
+  ok('preview: has an image', !!meta('og:image'))
+  ok('preview: large card for other clients', meta('twitter:card') === 'summary_large_image')
+
+  for (const p of ['og:url', 'og:image', 'twitter:image']) {
+    ok(`preview: ${p} is absolute`, (meta(p) ?? '').startsWith('https://'), meta(p) ?? 'missing')
+  }
+
+  /* The card must follow the site if it ever moves — a custom domain
+     would change ACADEMY.siteUrl and leave these pointing at github.io,
+     which still resolves, so nothing would look broken while every
+     preview quietly showed the old address. */
+  ok('preview: og:url agrees with ACADEMY.siteUrl',
+     (meta('og:url') ?? '').replace(/\/+$/, '') === ACADEMY.siteUrl.replace(/\/+$/, ''),
+     `${meta('og:url')} vs ${ACADEMY.siteUrl}`)
+  ok('preview: og:image is served from the same site',
+     (meta('og:image') ?? '').startsWith(ACADEMY.siteUrl.replace(/\/+$/, '')),
+     meta('og:image') ?? 'missing')
+
+  // Nothing about one family may reach a card this public.
+  const card = `${meta('og:title')} ${meta('og:description')}`.toLowerCase()
+  for (const leak of ['{', '₹', 'student', 'aarav', 'name']) {
+    ok(`preview: card carries no "${leak}"`, !card.includes(leak), card)
+  }
 }
 
 /* ------------------------------------------------------------------
