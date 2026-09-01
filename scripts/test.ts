@@ -456,11 +456,26 @@ ok('seed: all amounts positive', seed.transactions.every((t) => t.amount > 0))
   ok('confirm ask: bold, so it is not skimmed past',
      /\*[^*]*screenshot[^*]*\*/i.test(ownMsg), ownMsg)
   ok('confirm ask: says why it matters',
-     ownMsg.toLowerCase().includes('reminders keep coming'), ownMsg)
+     ownMsg.toLowerCase().includes('that is how i confirm'), ownMsg)
   ok('confirm ask: survives a batch with no pay link',
      bareMsg.toLowerCase().includes('screenshot'), bareMsg)
+  /* lastIndexOf, not indexOf: an em dash also sits in the amount line
+     ("fee for August — ₹2,000"), so the first one is above the ask, not
+     below it. The sign-off is the LAST one. */
   ok('confirm ask: sits above the sign-off',
-     ownMsg.indexOf('screenshot') < ownMsg.indexOf('Already paid'), ownMsg)
+     ownMsg.indexOf('screenshot') < ownMsg.lastIndexOf('—'), ownMsg)
+
+  /* Short enough to arrive whole.
+
+     WhatsApp folds a long message behind "Read more", and nobody taps
+     that — so a reminder that gets truncated has buried its own pay
+     link. 400 is a generous ceiling against the ~275 this renders at;
+     it is here to catch copy growing back, not to pin a number. */
+  ok('message: short enough not to be collapsed',
+     ownMsg.length < 400, `${ownMsg.length} chars`)
+  ok('message: the link is not most of it',
+     (ownMsg.match(/https?:\/\/\S+/) ?? [''])[0].length < ownMsg.length * 0.45,
+     ownMsg)
   ok('confirm ask: appears once, not twice',
      (ownMsg.toLowerCase().match(/screenshot/g) ?? []).length === 1, ownMsg)
   ok('batch upi: and no dangling placeholder', !/\{[a-z]+\}/.test(bareMsg), bareMsg)
@@ -1322,10 +1337,24 @@ function report(): void {
   // Round trip: what the reminder writes is what the page reads.
   const parsed = new URLSearchParams(link.slice(link.indexOf('?') + 1))
   eq('round trip: amount', parsed.get('a'), '2200')
-  eq('round trip: student', parsed.get('n'), 'Aadhya Raju')
   eq('round trip: upi', parsed.get('u'), '7732077327@ybl')
-  eq('round trip: payee', parsed.get('p'), 'Match Point Badminton Academy')
-  eq('round trip: months', parsed.get('m'), 'August')
+
+  /* The link carries only what the PAGE cannot work out for itself.
+
+     It was a third of the message — 122 of 403 characters — repeating
+     the student, the month and the payee, all three of which the
+     message states in plain words directly above the link. Nobody reads
+     a query string to learn whose fee it is. */
+  eq('link omits the student — the message already names them', parsed.get('n'), null)
+  eq('link omits the month — same reason', parsed.get('m'), null)
+  eq('link omits the payee when it IS the academy', parsed.get('p'), null)
+
+  // ...but a batch collecting to someone else must still say so.
+  const other = new URLSearchParams(
+    payLink({ ...d, payee: 'Ramesh Coaching' }).split('?')[1],
+  )
+  eq('link keeps a payee that differs from the academy',
+     other.get('p'), 'Ramesh Coaching')
 
   eq('payLink omits a zero amount', new URLSearchParams(
        payLink({ ...d, amount: 0 }).split('?')[1]).get('a'), null)

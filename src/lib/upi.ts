@@ -73,12 +73,22 @@ export function upiLink(app: UpiApp, d: PayDetails): string {
  * on the phone that composed it.
  */
 export function payLink(d: PayDetails): string {
+  /* Only what the PAGE cannot work out for itself.
+
+     The link was 122 characters of a 403-character message — a third of
+     it — because it repeated the student, the month and the payee, all
+     three of which the message says in plain words directly above it. A
+     parent does not read a query string to find out whose fee it is.
+
+     `a` and `u` always: the amount and the account are the two things
+     the page cannot default. `p` only when the batch collects to a
+     payee that is NOT the academy's own, because Pay.tsx already falls
+     back to it — sending it every time was 20 characters to say what
+     the page assumed anyway. */
   const q = new URLSearchParams()
   if (d.amount > 0) q.set('a', String(Math.round(d.amount)))
-  if (d.student) q.set('n', d.student)
   q.set('u', d.upi)
-  q.set('p', d.payee)
-  if (d.months) q.set('m', d.months)
+  if (d.payee && d.payee !== A.billing.payee) q.set('p', d.payee)
   return `${A.siteUrl.replace(/\/+$/, '')}/#/pay?${q.toString()}`
 }
 

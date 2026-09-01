@@ -19,7 +19,7 @@ import {
   studentById,
   whatsappLink,
 } from '../lib/selectors'
-import { Empty, Sheet, Stat } from '../components/ui'
+import { Confirm, Empty, Sheet, Stat } from '../components/ui'
 import { ACADEMY } from '../lib/academy'
 import { ConfirmPayment, ProofImage } from '../components/ConfirmPayment'
 import { BarChart } from '../components/charts'
@@ -248,6 +248,8 @@ function ReminderRow({ reminder, onOpen }: { reminder: Reminder; onOpen: () => v
 function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onClose: () => void }) {
   const { data, toast, logReminderSent } = useStore()
   const [confirming, setConfirming] = useState(false)
+  /* Which channel was handed off to, waiting to be confirmed. See send(). */
+  const [pendingSend, setPendingSend] = useState<ReminderChannel | null>(null)
 
   if (!reminder) return null
   const live = data.reminders.find((r) => r.id === reminder.id) ?? reminder
@@ -280,6 +282,27 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
     toast(`Logged as sent on ${channel === 'whatsapp' ? 'WhatsApp' : channel === 'sms' ? 'SMS' : 'call'}.`)
   }
 
+  /**
+   * Hand off to WhatsApp, SMS or the dialer — and do NOT record a send.
+   *
+   * This used to call logSend() immediately after opening the other app.
+   * Nothing about opening WhatsApp says the message left: the owner can
+   * read it, change his mind, and close it. The row went into
+   * reminder_events anyway, reminder_queue read it back as
+   * `already_sent`, and that parent was not offered again until the next
+   * day — a chase silently skipped because the app assumed.
+   *
+   * So the confirm is raised HERE, before the handoff, rather than on a
+   * visibilitychange when he comes back. Returning to the app is not a
+   * reliable event — a second browser tab may never hide, and a WebView
+   * resume can arrive before or after the dialog mounts. Rendering it
+   * now means it is simply already on screen whenever he looks, however
+   * he got back.
+   *
+   * The failure direction is deliberate: dismissing it records nothing,
+   * so the parent is offered again. Under-recording chases someone
+   * twice; over-recording lets a fee go quiet.
+   */
   const send = async (channel: ReminderChannel) => {
     if (!student?.phone) {
       toast('This student has no phone number.', 'bad')
@@ -292,7 +315,7 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
     } else {
       window.location.href = `tel:${student.phone}`
     }
-    logSend(channel)
+    setPendingSend(channel)
   }
 
   /* reopen / cancel / delete are gone.
@@ -484,6 +507,27 @@ function ReminderDetail({ reminder, onClose }: { reminder: Reminder | null; onCl
           ))}
         </div>
       </Sheet>
+
+      <Confirm
+        open={pendingSend !== null}
+        title={
+          pendingSend === 'call'
+            ? `Did you speak to ${student?.name ?? 'them'}?`
+            : `Did you send it to ${student?.name ?? 'them'}?`
+        }
+        body={
+          pendingSend === 'call'
+            ? 'Only say yes if the call actually happened. Anything recorded here counts as a chase, and they will not be offered again today.'
+            : 'Only say yes if you pressed send. Anything recorded here counts as a chase, and they will not be offered again today.'
+        }
+        confirmLabel={pendingSend === 'call' ? 'Yes, we spoke' : 'Yes, sent'}
+        onConfirm={() => {
+          const ch = pendingSend
+          setPendingSend(null)
+          if (ch) void logSend(ch)
+        }}
+        onCancel={() => setPendingSend(null)}
+      />
 
       <ConfirmPayment
         reminder={confirming ? live : null}

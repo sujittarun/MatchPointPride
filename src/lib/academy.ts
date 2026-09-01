@@ -115,9 +115,13 @@ export const ACADEMY = {
      turned an internal label ("Kids Batch A") into something they were
      asked to recognise. {batch} still resolves if a custom message wants
      it. */
+  /* Short on purpose. The owner reads this before every send, and a
+     parent reads it on a phone — WhatsApp collapses a long message
+     behind "Read more", and nobody taps that. Every line here has to
+     earn its place, so the greeting went: the academy's name is already
+     the first thing on the line. */
   reminderTemplate:
-    'A gentle note from {academy} 🏸 — {student}’s fee for {months} ' +
-    'comes to *{amount}*.',
+    '{academy} 🏸\n{student}’s fee for {months} — *{amount}*',
 
   /**
    * Only when the batch resolves to a UPI account, so a batch without one
@@ -150,10 +154,9 @@ export const ACADEMY = {
    * in a short message is the most emphasis this copy should ever carry.
    */
   reminderConfirmLine:
-    '*Please send a payment screenshot here once done* 📸\n' +
-    'That is how I confirm it — reminders keep coming until I do.',
+    '*Send a screenshot after paying* 📸\n' +
+    'That is how I confirm it. Ignore this if you already have.',
 
-  /** Always last. */
-  reminderSignoff:
-    'Already paid? Please ignore this 🙏\n\n— {owner}\n{academy}',
+  /** Always last. The academy already named itself in the first line. */
+  reminderSignoff: '— {owner}',
 } as const
