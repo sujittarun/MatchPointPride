@@ -1,5 +1,6 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import '../styles/landing.css'
+import { classifyPinKey } from '../lib/keys'
 import { lockedForMs, useStore } from '../lib/store'
 import { navigate } from '../lib/router'
 import { forget as forgetVault, isEnrolled, pinLength } from '../lib/vault'
@@ -344,6 +345,48 @@ function PasscodeSheet({
     if (err || locked) return
     setCode((c) => (c.length >= pinLen ? c : c + d))
   }
+
+  /* The keypad is buttons, and on a laptop that was the ONLY way in.
+     Typing 1-2-3-4 did nothing at all, with a numeric pad on screen
+     inviting exactly that — the app is phone-first, but it is served
+     from a URL and the owner opens it on a desktop.
+
+     A window listener rather than an <input>: the dots are the display,
+     there is no field to focus, and a hidden input would fight the
+     on-screen pad for the value. Both routes go through press(), so the
+     lockout and the length cap apply identically however a digit
+     arrives.
+
+     Guards, in order: the sheet has to be open and past enrolment (the
+     setup branch is a real form and owns its own keys); modifier
+     combinations are left alone so refresh and devtools still work; and
+     anything typed while a real field has focus belongs to that field.
+     e.key covers the number row and the numpad alike. */
+  /* Held in a ref so the listener attaches ONCE per open rather than on
+     every render — press() closes over `err`, `locked` and `pinLen`, so
+     a plain dependency-free effect would add and remove a listener each
+     time a digit landed. Same shape as usePullToRefresh. */
+  const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {})
+  keyHandler.current = (e: KeyboardEvent) => {
+    // Anything typed while a real field has focus belongs to that field.
+    const el = document.activeElement
+    if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return
+    const k = classifyPinKey(e)
+    if (k.kind === 'digit') {
+      e.preventDefault()
+      press(k.value)
+    } else if (k.kind === 'delete') {
+      e.preventDefault()
+      if (!locked) setCode((c) => c.slice(0, -1))
+    }
+  }
+
+  useEffect(() => {
+    if (!open || !enrolled || forgotten) return
+    const onKey = (e: KeyboardEvent) => keyHandler.current(e)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, enrolled, forgotten])
 
   if (forgotten) {
     return (

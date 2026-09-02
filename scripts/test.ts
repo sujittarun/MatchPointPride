@@ -19,6 +19,7 @@ import {
 import { assemble, toStudents, toTransactions } from '../src/lib/mapping'
 import { needsNamedUpiApps, payLink, upiLink, upiQuery } from '../src/lib/upi'
 import { pageKey } from '../src/lib/telemetry'
+import { classifyPinKey } from '../src/lib/keys'
 import { ACADEMY } from '../src/lib/academy'
 import type { BatchRow, EnrollmentRow, MemberRow } from '../src/lib/cloud'
 import { buildEmptyData, buildSeedData } from '../src/lib/seed'
@@ -1531,6 +1532,30 @@ function report(): void {
   for (const leak of ['{', '₹', 'student', 'aarav', 'name']) {
     ok(`preview: card carries no "${leak}"`, !card.includes(leak), card)
   }
+}
+
+{
+  /* The PIN pad on a laptop.
+
+     The keypad is buttons, so on a desktop the ONLY way in was clicking
+     them — typing 1-2-3-4 did nothing, with a numeric pad on screen
+     inviting exactly that. Both routes now go through press(), so the
+     lockout and the length cap apply however a digit arrives. */
+  eq('pin key: a number-row digit', classifyPinKey({ key: '7' }), { kind: 'digit', value: '7' })
+  eq('pin key: zero is a digit too', classifyPinKey({ key: '0' }), { kind: 'digit', value: '0' })
+  eq('pin key: backspace deletes', classifyPinKey({ key: 'Backspace' }), { kind: 'delete' })
+  eq('pin key: a letter is not a PIN key', classifyPinKey({ key: 'a' }).kind, 'ignore')
+  eq('pin key: Enter is not', classifyPinKey({ key: 'Enter' }).kind, 'ignore')
+  eq('pin key: Escape is left to the sheet', classifyPinKey({ key: 'Escape' }).kind, 'ignore')
+
+  /* A held modifier means the keystroke is the browser's — Cmd+R is a
+     refresh. Swallowing it to type a 5 is worse than the bug. */
+  eq('pin key: Cmd+5 belongs to the browser',
+     classifyPinKey({ key: '5', metaKey: true }).kind, 'ignore')
+  eq('pin key: Ctrl+5 too', classifyPinKey({ key: '5', ctrlKey: true }).kind, 'ignore')
+  eq('pin key: Alt+5 too', classifyPinKey({ key: '5', altKey: true }).kind, 'ignore')
+  eq('pin key: Ctrl+Backspace is not a delete',
+     classifyPinKey({ key: 'Backspace', ctrlKey: true }).kind, 'ignore')
 }
 
 /* ------------------------------------------------------------------
